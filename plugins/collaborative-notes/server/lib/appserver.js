@@ -29,16 +29,42 @@ async function executable(file) {
   } catch { return false; }
 }
 
-async function findOnPath(command, env = process.env) {
-  const parts = (env.PATH || "").split(path.delimiter).filter(Boolean);
+async function findOnPath(command, env = process.env, platform = process.platform) {
+  const parts = (env.PATH || env.Path || "").split(path.delimiter).filter(Boolean);
+  // On Windows only a real .exe can be spawned without a shell; npm puts an
+  // extensionless sh shim named `codex` on PATH that must not be picked.
+  const names = platform === "win32" ? [`${command}.exe`] : [command];
   for (const directory of parts) {
-    const candidate = path.join(directory, command);
-    if (await executable(candidate)) return candidate;
+    for (const name of names) {
+      const candidate = path.join(directory, name);
+      if (await executable(candidate)) return candidate;
+    }
   }
   return undefined;
 }
 
-export { bundledCandidates };
+// On Windows the desktop app copies its runtime (codex.exe, node.exe) under
+// %LOCALAPPDATA%\OpenAI\Codex (bin\, runtimes\<component>\<hash>\…); the
+// hash changes with app versions, so search it (newest first, shallow).
+export async function windowsRuntimeExecutables(name, env = process.env) {
+  const root = env.LOCALAPPDATA ? path.join(env.LOCALAPPDATA, "OpenAI", "Codex") : null;
+  if (!root) return [];
+  const found = [];
+  async function walk(directory, depth) {
+    let entries;
+    try { entries = await fs.readdir(directory, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      const full = path.join(directory, entry.name);
+      if (entry.isFile() && entry.name.toLowerCase() === name) {
+        try { found.push({ full, mtime: (await fs.stat(full)).mtimeMs }); } catch { /* vanished */ }
+      } else if (entry.isDirectory() && depth < 5) await walk(full, depth + 1);
+    }
+  }
+  await walk(root, 0);
+  return found.sort((left, right) => right.mtime - left.mtime).map((entry) => entry.full);
+}
+
+export { bundledCandidates, findOnPath };
 
 export async function resolveCodexBinary({ env = process.env } = {}) {
   if (env.CN_CODEX_BIN) return env.CN_CODEX_BIN;
@@ -47,6 +73,10 @@ export async function resolveCodexBinary({ env = process.env } = {}) {
   // writes the threads, while a codex on PATH may be older or newer.
   if (process.platform === "darwin") {
     for (const candidate of bundledCandidates()) if (await executable(candidate)) return candidate;
+  }
+  if (process.platform === "win32") {
+    const [runtime] = await windowsRuntimeExecutables("codex.exe", env);
+    if (runtime) return runtime;
   }
   const onPath = await findOnPath("codex", env);
   if (onPath) return onPath;
@@ -74,7 +104,7 @@ export class AppServerClient {
     spawn = defaultSpawn,
     binary,
     requestTimeoutMs = DEFAULT_TIMEOUT_MS,
-    clientInfo = { name: "collaborative-notes", version: "0.7.2" },
+    clientInfo = { name: "collaborative-notes", version: "0.8.7" },
   } = {}) {
     this.env = env;
     this.spawn = spawn;
@@ -95,6 +125,7 @@ export class AppServerClient {
       // A plugin upgrade deletes the install directory this process may have
       // started in; codex app-server exits at once in a deleted cwd.
       const child = this.spawn(binary, ["app-server"], {
+        windowsHide: true,
         cwd: os.homedir(),
         env: this.env,
         stdio: ["pipe", "pipe", "pipe"],

@@ -18,9 +18,9 @@ transient workspace** beside the current conversation. It helps you and the
 agent decide what should keep occupying attention now, what can safely be set
 aside, and how to bring it back accurately when it matters again.
 
-**Release 0.7.2** is validated on macOS with ChatGPT 26.908.70816 and
-26.928.31416. It works in Codex conversations and in Work conversations that
-run on your computer.
+**Release 0.8.7** is validated on macOS (ChatGPT 26.928.31416) and on
+Windows (ChatGPT 26.930.2377.0). It works in Codex conversations and in Work
+conversations that run on your computer.
 
 It continues the [Collaborative Notes for DeepSeek Harness](https://github.com/aprilxuMLC/dsh-collaborative-notes)
 release and shares its product contract. The ChatGPT desktop realization is
@@ -142,17 +142,29 @@ The default is **user-led capture with collaborative maintenance**.
   conversation for an exact passage.
 - **Bring notes back when you choose.** Tick notes, and your next message
   carries them to the agent as reference data, not as instructions.
-- **Notes for any agent, in any conversation or workflow.** The agent can
-  read, write and edit notes, and follow a note's source back to the
-  original discussion. It can do this:
-  - in the current conversation;
-  - in another conversation you name, read-only;
-  - from any downstream workflow, since notes are plain files with an open
-    format.
+- **Work through notes with your agent.** Ask the agent to write a note for
+  you or edit one, to tell you what your notes say, or to talk them through
+  with you. This works for this conversation's notes and, read-only, for the
+  notes of another conversation you name. The agent can follow a note back
+  to its source and read the surrounding discussion, so the conversation
+  picks up from what was actually said, not from a summary. Cross-conversation
+  source re-entry is stronger here than in the DSH release.
+- **Raw material for later work, in any agent, conversation or workflow.**
+  Every note keeps three things together:
+  - your own thinking, in the note text;
+  - the conversation it came from;
+  - for a quoted note, the exact sentence that prompted it.
 
-  Cross-conversation source re-entry is stronger here than in the DSH
-  release: a note held by another conversation can be traced to its source
-  and read with as much context as the task needs.
+  Notes are plain files in an open format, so any agent or workflow can pick
+  them up later and recover as much context as its task needs, for example:
+  - build a knowledge base from L3 knowledge candidates and the discussions
+    behind them;
+  - turn L4 lesson candidates into an agent's long-term memory of
+    experience and lessons;
+  - feed L2 deferred work into a later planning session.
+
+  L3 and L4 are candidates: they become knowledge or lessons only through
+  your own review. See [section IV](#iv-for-downstream-agents-and-workflows).
 - **Branches.** When you fork a conversation, its own Notes opens within
   seconds and asks whether to bring all, some or none of the parent's notes.
   Notes whose source lies after the fork point stay behind, and the two
@@ -161,15 +173,45 @@ The default is **user-led capture with collaborative maintenance**.
   you delete.
 - **Bilingual.** The panel follows the app language (English / 简体中文).
 
+## What it looks like in use
+
+- **Ask the agent for a note.** "Put this in L2: revisit the caching idea
+  after the release." The note appears in L2 after you refresh Notes.
+- **Ask about another conversation's notes.** "What did I put in L3 in the
+  conversation about the pricing model? Take me back to where that came
+  from." The agent reads that conversation's notes, read-only, and opens the
+  source discussion.
+- **Discuss chosen notes now.** Tick the two notes you want to settle, then
+  write "Let's go through these." Your message carries them to the agent.
+- **Explore from another angle in a branch.** Fork the conversation and
+  bring over only some notes. The branch takes them in a new direction
+  while the original conversation carries on with its own.
+- **Find a note.** Search the Notes panel by any word in your notes.
+- **Quote something from long ago.** Open **Quote from conversation** and
+  search a word you remember, even from a part the agent no longer keeps in
+  context. Expand the turn, select the exact sentence, and quote it into a
+  note.
+- **Return to a source together.** "Go back to the source of that note and
+  remind me what we decided around it." The agent reads the original turn
+  and the turns around it.
+- **Build a knowledge base in a separate workflow.** In a conversation set
+  up for that job: "Collect every note about attention from this project's
+  notes, with the passages they quote and the discussion around them, and
+  draft knowledge-base entries for me to review." The agent reads the note
+  files directly and follows each source back to its conversation.
+
 ---
 
 # III. Installation, first use, and support boundary
 
-## Install (macOS)
+## Install
 
-Requires the ChatGPT desktop app with Codex or Work, and git. On a Mac without
-git, run `xcode-select --install` once in Terminal to install Apple's Command
-Line Tools.
+Requires the ChatGPT desktop app with Codex or Work, and git.
+
+### macOS
+
+On a Mac without git, run `xcode-select --install` once in Terminal to
+install Apple's Command Line Tools.
 
 In Terminal:
 
@@ -180,15 +222,35 @@ CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex
 "$CODEX" plugin add collaborative-notes@collaborative-notes
 ```
 
-This uses the codex that ships with ChatGPT; nothing else needs installing.
-Then:
+### Windows
 
-1. Quit ChatGPT (⌘Q) and open it again.
-2. **Trust the hooks once:** ChatGPT → Settings → Coding → Hooks →
-   Collaborative Notes → trust both hooks. Codex runs plugin hooks only after
-   you trust them, and again after any hook change.
-3. **Quit ChatGPT (⌘Q) and open it once more.** Trust takes effect at start:
-   until then, Notes does not open by itself and the panel shows an
+Without git, install [Git for Windows](https://git-scm.com/download/win)
+first, or use the ZIP route below.
+
+In PowerShell (a normal window; administrator rights are not needed):
+
+```powershell
+$CODEX = (Get-ChildItem "$env:LOCALAPPDATA\OpenAI\Codex\bin" -Recurse -Filter codex.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+& $CODEX plugin marketplace add aprilxuMLC/codex-work-collaborative-notes
+& $CODEX plugin add collaborative-notes@collaborative-notes
+```
+
+The newest `codex.exe` is the one that matches your ChatGPT; an older copy
+may sit next to it and fail with "failed to load configuration".
+
+### Then, on both
+
+These commands use the codex that ships with ChatGPT; nothing else needs
+installing.
+
+1. Quit ChatGPT completely (⌘Q on macOS; on Windows also from the tray icon
+   if there is one) and open it again.
+2. **Trust the hooks:** ChatGPT → Settings → Coding → Hooks → Collaborative
+   Notes → trust both hooks. Codex runs plugin hooks only after you trust
+   them, and again after an update that changes a hook (the hooks then show
+   as modified).
+3. **Quit ChatGPT completely and open it once more.** Trust takes effect at
+   start: until then, Notes does not open by itself and the panel shows an
    "Automatic features are off" banner.
 
 Other ways to install:
@@ -196,20 +258,28 @@ Other ways to install:
   unzipped folder to `marketplace add` instead of the GitHub name.
 - **Asking Codex to install it:** ask it to run exactly the commands above,
   to stop and report on any error, and not to install other software or edit
-  `~/.codex` by hand. Trusting the hooks stays your step.
+  `~/.codex` by hand. Trusting the hooks stays your step. On Windows, run the
+  commands in your own PowerShell instead: Codex's sandbox cannot write to
+  the plugin folders.
 
-**Update:** run `"$CODEX" plugin marketplace upgrade`, then the `plugin add`
-command again, then restart ChatGPT. Your notes and settings are kept.
+**Update:** run `plugin marketplace upgrade` with your `$CODEX` (macOS:
+`"$CODEX" plugin marketplace upgrade`; Windows: `& $CODEX plugin marketplace
+upgrade`), then the `plugin add` command again, then restart ChatGPT. If the
+update changed a hook, trust it again and restart once more. If Notes does
+not open by itself after an update, quit ChatGPT completely and open it
+again. Your notes and settings are kept.
 
 **Uninstall:**
-1. Run `"$CODEX" plugin remove collaborative-notes@collaborative-notes`.
-2. Run `"$CODEX" plugin marketplace remove collaborative-notes`.
+1. Run `plugin remove collaborative-notes@collaborative-notes` with your
+   `$CODEX`.
+2. Run `plugin marketplace remove collaborative-notes`.
 3. Restart ChatGPT.
 
 Your notes stay in your project folders. The plugin's own data (bindings,
 selections, settings) stays in
-`~/.codex/plugins/data/collaborative-notes-collaborative-notes/`; delete
-that folder if you no longer want it.
+`~/.codex/plugins/data/collaborative-notes-collaborative-notes/` (on Windows
+`%USERPROFILE%\.codex\plugins\data\collaborative-notes-collaborative-notes\`);
+delete that folder if you no longer want it.
 
 ## First use
 
@@ -235,8 +305,8 @@ that folder if you no longer want it.
    X". It answers "Updated — please refresh Notes to see it" after any
    change.
 
-Hide or show the side panel with ⌥⌘B (View → Toggle Review Panel); the Notes
-tab stays. If you close the tab, Notes opens again with your next message
+Hide or show the side panel with its toggle (⌥⌘B on macOS, View → Toggle
+Review Panel; Ctrl+Alt+B on Windows); the Notes tab stays. If you close the tab, Notes opens again with your next message
 after about five minutes, or ask the agent to "open Notes". The **?** in the
 panel explains everything above.
 
@@ -246,14 +316,14 @@ panel explains everything above.
 
 ## Support boundary
 
-**Supported:** macOS; Codex conversations; Work conversations that run on your
-computer.
+**Supported:** macOS and Windows; Codex conversations; Work conversations
+that run on your computer.
 
 **Not supported:**
 - Work conversations in the cloud, and Work conversations branched from an
   ordinary Chat (also cloud). Notes needs your computer.
 - Ordinary Chat, ChatGPT web, ChatGPT mobile.
-- Windows: a planned extension.
+- Linux, and Windows conversations that run in WSL (not tested).
 
 **Things to know:**
 - **Quoting** covers user and assistant messages, one message at a time.

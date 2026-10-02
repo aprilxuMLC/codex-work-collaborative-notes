@@ -2,7 +2,8 @@
 
 **English** | [中文](chatgpt-desktop-adapter.zh-CN.md)
 
-> **Version:** 0.7.2 · validated on macOS with ChatGPT 26.908.70816 and 26.928.31416.
+> **Version:** 0.8.7 · validated on macOS (ChatGPT 26.908.70816, 26.928.31416) and
+> Windows (ChatGPT 26.930.2377.0).
 >
 > **Scope:** how this plugin realizes the Collaborative Notes
 > [Core Contract](core-contract.md) on the ChatGPT desktop app's **Codex** mode
@@ -27,7 +28,9 @@
   - ordinary Chat, web, mobile.
 
   None of them has a local thread, hooks or plugin tools.
-- **Platform:** macOS. Windows is a planned extension.
+- **Platforms:** macOS and Windows. One code base; Windows-specific behaviour
+  is limited to process launch, executable lookup and the panel deeplink
+  (§10).
 
 ## 2. Components
 
@@ -184,9 +187,20 @@ The bundled `codex` is used for app-server access.
   a deleted working directory. An open page reloads itself when the service
   version changes.
 - **Runtime lookup:**
-  - MCP launches through `/bin/sh` with the bundled Node first;
-  - hooks use `CODEX_MCP_NODE_PATH`;
-  - app-server access uses the bundled `codex`, in either known layout.
+  - macOS: MCP launches through `/bin/sh` (`server/launch-mcp`) with the
+    bundled Node first; hooks use `CODEX_MCP_NODE_PATH`; app-server access
+    uses the bundled `codex`, in either known layout.
+  - Windows: Codex resolves the MCP command to `server/launch-mcp.cmd`;
+    MCP and hooks run through `server/node-run.cmd`, which finds the Node
+    that ChatGPT copies under `%LOCALAPPDATA%\OpenAI\Codex`. Hooks run in the
+    session's shell (PowerShell), so the hook command starts with
+    `cmd /d /c call`. App-server access uses the newest `codex.exe` under
+    `%LOCALAPPDATA%\OpenAI\Codex`; on `PATH`, only a real `codex.exe`.
+    Background processes start hidden and outside the plugin folder, so an
+    update can replace that folder while ChatGPT runs.
+- **Panel deeplink:** `codex://browser?url=…` on macOS;
+  `codex://threads/<id>?browserUrl=…` on Windows, where the bare browser
+  link does nothing.
 - **History cache:** at most 3 threads, evicted after 10 minutes idle,
   topped up incrementally. Rewinds drop stale turns.
 
@@ -202,7 +216,10 @@ The plugin reads only these:
 - the first line of newly created Codex session files, for fork detection;
 - `~/.codex/config.toml`, for the interface language;
 - the conversation transcript's first line, to tell desktop sessions from
-  CLI ones.
+  CLI ones;
+- on Windows, the file listing under `%LOCALAPPDATA%\OpenAI\Codex`, to find
+  ChatGPT's Node and `codex.exe`, and, only when an old service does not
+  answer, that process's command line, to confirm it is this plugin's.
 
 It writes only:
 - the notes root;
@@ -217,6 +234,9 @@ It sends nothing off the machine. The service listens on `127.0.0.1` only.
 - Delivery of ticked notes is confirmed after the fact, because the host has
   no post-turn hook.
 - Cross-thread authorization is behavioural, not mechanical.
+- On Windows, hook trust covers the Windows command: an update that changes
+  it shows the hooks as modified until the user trusts them again. On macOS
+  only the macOS command counts.
 - Direct file edits are unprotected.
 - Copied tabs after a fork are host behaviour; the plugin works around them.
 - The plugin relies on observed desktop behaviour that may change between

@@ -117,7 +117,7 @@
     "help.lane2": "延后工作：先放下、之后再回来的问题或工作。",
     "help.lane3": "知识候选：值得保留、但还不是正式知识结论的材料。",
     "help.lane4": "复盘素材：值得以后复用、但还需要判断或整理的经验候选。",
-    "help.panel": "打开与收起：用 ⌥⌘B（Option+Command+B，或菜单里的「隐藏/显示侧边面板」）收起或显示右侧面板，便签页会一直保留；⌘B 是左侧栏。如果点 × 关掉了便签页，关掉约 5 分钟后，你发下一条消息时会自动重新打开；也可以对 agent 说「打开便签」。页面显示异常时，点侧栏浏览器工具栏的 ⟳ 或面板右上角的 ↻ 重新载入。",
+    "help.panel": "打开与收起：用 ⌥⌘B（Option+Command+B；Windows 上是 Ctrl+Alt+B；或菜单里的「隐藏/显示侧边面板」）收起或显示右侧面板，便签页会一直保留；⌘B（Windows：Ctrl+B）是左侧栏。如果点 × 关掉了便签页，关掉约 5 分钟后，你发下一条消息时会自动重新打开；也可以对 agent 说「打开便签」。页面显示异常时，点侧栏浏览器工具栏的 ⟳ 或面板右上角的 ↻ 重新载入。",
     "help.source": "回来源：在带来源的便签上点「↪ 回来源」，面板会显示原来那一轮对话，并高亮当时选中的文字；可以展开前后几轮，也可以打开原对话。",
     "help.reference": "带给 agent：勾选便签上的「引用」，发送下一条消息时这些便签会作为参考资料一并交给当前对话的 agent。只有你勾选时才会带入；带入失败时这条消息会被拦下，勾选保留。",
     "help.branches": "分支：分支出新对话后，几秒内会在分支里打开它自己的便签并显示带入询问；如果你正在看被复制的标签页，请点「打开分支的便签」。随后可选择把父对话的便签全部、部分或都不带过来；两边各自独立。",
@@ -191,7 +191,7 @@
     "error.NOTES_SOURCE_CONSENT_REQUIRED": "读取此来源需要本次请求确认",
     "error.default": "请求未完成",
     "help.quote": "从对话引用：点「从对话引用」，面板会列出最新 10 轮摘要（时间 · 你问了什么 → 回答开头），最新在上，📌 表示这一轮已有便签。点一行展开原文；底部可以继续加载更早的 20 轮。选中要引用的文字，再点「引用选中到便签」。引用不会产生对话轮次，agent 也不会察觉；正文可以先留空。不想要了可点引用框里的「✕ 移除引用」。",
-    "help.findFarBack": "找更早的段落：在搜索框输入至少两个字符，会搜索本对话的全部轮次（包括已被压缩、agent 不再记得的部分）；点结果即可展开那一轮并高亮命中。也可以在 Codex 对话里往上翻，选中那段文字按 ⌘C，再到搜索框按 ⌘V 粘贴：面板会定位到那一轮并高亮，你再在展开的原文里选中引用。搜索和粘贴只帮你找到位置，最终引用始终是你自己选中的原文。很长的对话第一次搜索需要几秒，之后会很快。思考过程和工具输出不在可搜索范围内。",
+    "help.findFarBack": "找更早的段落：在搜索框输入至少两个字符，会搜索本对话的全部轮次（包括已被压缩、agent 不再记得的部分）；点结果即可展开那一轮并高亮命中。也可以在 Codex 对话里往上翻，选中那段文字按 ⌘C（Windows：Ctrl+C），再到搜索框按 ⌘V（Windows：Ctrl+V）粘贴：面板会定位到那一轮并高亮，你再在展开的原文里选中引用。搜索和粘贴只帮你找到位置，最终引用始终是你自己选中的原文。很长的对话第一次搜索需要几秒，之后会很快。思考过程和工具输出不在可搜索范围内。",
   };
 
   const en = {
@@ -310,7 +310,7 @@
     "help.lane2": "Deferred Work: questions or work to set aside and revisit later.",
     "help.lane3": "Knowledge Candidate: material worth keeping that is not yet a formal knowledge conclusion.",
     "help.lane4": "Lesson Candidate: experience candidates worth reusing after judgment or organization.",
-    "help.panel": "Showing and hiding: use ⌥⌘B (Option+Command+B, or View → Toggle Review Panel) to hide or show the right-hand panel; the Notes tab stays. ⌘B is the left sidebar. If you close the Notes tab with ×, it opens again with your next message once it has been closed for about 5 minutes; or ask the agent to \"open Notes\". If the page looks wrong, reload it with ⟳ in the side panel's browser toolbar or ↻ at the top right of the panel.",
+    "help.panel": "Showing and hiding: use ⌥⌘B (Option+Command+B; Ctrl+Alt+B on Windows; or View → Toggle Review Panel) to hide or show the right-hand panel; the Notes tab stays. ⌘B (Windows: Ctrl+B) is the left sidebar. If you close the Notes tab with ×, it opens again with your next message once it has been closed for about 5 minutes; or ask the agent to \"open Notes\". If the page looks wrong, reload it with ⟳ in the side panel's browser toolbar or ↻ at the top right of the panel.",
     "help.source": "Return to source: on a sourced note, click \"↪ Return to source\" to see the original turn with the quoted text highlighted; expand earlier or later turns, or open the original conversation.",
     "help.reference": "Bring notes to the agent: tick \"Quote\" on notes and they go along with your next message as reference material for this conversation's agent. Only ticked notes are sent; if attaching fails, that message is held back and your ticks stay.",
     "help.branches": "Branches: within a few seconds of branching, the branch's own Notes opens with the carry question; if you are looking at the copied tab, click \"Open the branch's Notes\". Then choose all, some or none of the parent's notes; the two sides remain independent.",
@@ -384,7 +384,7 @@
     "error.NOTES_SOURCE_CONSENT_REQUIRED": "This source requires per-request confirmation",
     "error.default": "The request did not complete",
     "help.quote": "Quote from the conversation: click \"Quote from conversation\" to see the latest 10 turn summaries (time · what you asked → how the answer starts), newest first; 📌 marks turns that already have notes. Click a line to expand the original; use the button at the bottom to load 20 earlier turns. Select the text, then \"Quote selection into note\". Quoting creates no chat turn and the agent is not notified; the note body may stay empty. Changed your mind? Use \"✕ Remove quote\" in the quote box.",
-    "help.findFarBack": "Finding something earlier: type at least two characters in the search box to search every turn of this conversation (including parts that were compacted and the agent no longer remembers); click a result to expand that turn with the match highlighted. Or scroll up in the Codex conversation, select the passage, press ⌘C, then ⌘V into the search box: the panel finds that turn and highlights it, and you select the quote in the expanded original. Search and paste only find the place; the saved quote is always your own selection of the original. In a very long conversation the first search takes a few seconds; later ones are instant. Reasoning and tool output are not searchable.",
+    "help.findFarBack": "Finding something earlier: type at least two characters in the search box to search every turn of this conversation (including parts that were compacted and the agent no longer remembers); click a result to expand that turn with the match highlighted. Or scroll up in the Codex conversation, select the passage, press ⌘C (Windows: Ctrl+C), then ⌘V (Windows: Ctrl+V) into the search box: the panel finds that turn and highlights it, and you select the quote in the expanded original. Search and paste only find the place; the saved quote is always your own selection of the original. In a very long conversation the first search takes a few seconds; later ones are instant. Reasoning and tool output are not searchable.",
   };
 
   const keys = Object.freeze(Object.keys(zh));

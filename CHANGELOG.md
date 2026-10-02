@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.7 — Windows
+
+- **Windows support** for Codex conversations and Work conversations that
+  run on your computer, validated with ChatGPT 26.930.2377.0. Install with
+  PowerShell (see the README).
+- The Windows hook command runs under both PowerShell and cmd. After an
+  update that changes a hook, trust the hooks again; on Windows this also
+  applies to the Windows-only command.
+- Panel help and agent instructions name the Windows shortcuts
+  (Ctrl+Alt+B for the side panel, Ctrl+C / Ctrl+V).
+- Diagnostics: `CN_HOOK_DEBUG=1` prints each hook step to stderr; a hook
+  that runs out of time is now recorded in `hook-errors.log`.
+- macOS: behaviour unchanged. The MCP launcher moved from an inline
+  `/bin/sh -c` script to `server/launch-mcp`, which does the same.
+
 ## 0.7.2
 
 - A renamed conversation's title appears in the Notes header within about

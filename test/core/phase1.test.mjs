@@ -260,3 +260,23 @@ describe("notes-ops", () => {
     assert.equal(final.notes[0].sourceSnapshot, "exact snapshot");
   });
 });
+
+it("renames retry briefly when Windows reports the target as in use", async () => {
+  const { renameWithRetry } = await import("../../plugins/collaborative-notes/server/lib/lane-store.js");
+  let calls = 0;
+  await renameWithRetry("a", "b", { delayMs: 1, rename: async () => {
+    calls += 1;
+    if (calls < 3) throw Object.assign(new Error("busy"), { code: "EPERM" });
+  } });
+  assert.equal(calls, 3);
+  await assert.rejects(renameWithRetry("a", "b", { delayMs: 1, rename: async () => { throw Object.assign(new Error("gone"), { code: "ENOENT" }); } }), /gone/);
+});
+
+it("recognises the entry script on every platform (Windows backslashes and case)", async () => {
+  const { isEntryModule } = await import("../../plugins/collaborative-notes/server/lib/entry.js");
+  const here = fileURLToPath(import.meta.url);
+  assert.equal(isEntryModule(import.meta.url, { argv1: here }), true);
+  assert.equal(isEntryModule(import.meta.url, { argv1: path.join(path.dirname(here), "other.mjs") }), false);
+  assert.equal(isEntryModule(import.meta.url, { argv1: here.toUpperCase(), platform: "win32" }), true);
+  assert.equal(isEntryModule(import.meta.url, { argv1: "" }), false);
+});

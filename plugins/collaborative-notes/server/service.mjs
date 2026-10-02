@@ -1,3 +1,4 @@
+import { isEntryModule } from "./lib/entry.js";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getItemKey, parseLaneBody } from "./lib/structured-item.js";
 import { promises as fs } from "node:fs";
@@ -10,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { resolveDataDir } from "./lib/datadir.js";
 import { createThreadContextResolver, getDefaultAppServer } from "./lib/appserver.js";
 import { detectLocale } from "./lib/locale.js";
-import { acquireLock, releaseLock, readLane, versionForBytes, writeLane } from "./lib/lane-store.js";
+import { acquireLock, releaseLock, readLane, renameWithRetry, versionForBytes, writeLane } from "./lib/lane-store.js";
 import { LANE_KEYS, isLaneKey, resolveLanes, sanitizeLaneConfig } from "./lib/lanes.js";
 import { filterEligibleBody, rekeyCarriedBody, mergeCarryBodies, carryMarker } from "./lib/carry.js";
 import { renderReferenceText, resolveReferenceTargets } from "./lib/reference-binding.js";
@@ -45,7 +46,7 @@ const PANEL_ASSETS = Object.freeze({
 });
 const MAX_REQUEST_BYTES = 1024 * 1024;
 const DEFAULT_IDLE_MS = 12 * 60 * 60 * 1000;
-const PLUGIN_VERSION = "0.7.2";
+const PLUGIN_VERSION = "0.8.7";
 const MAX_REFERENCE_CHARS = 8000;
 const REFERENCE_COPY_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -87,7 +88,7 @@ async function writeJsonAtomic(file, value, mode = 0o600) {
     handle = undefined;
     const existing = await fs.lstat(file).catch((error) => missing(error) ? null : Promise.reject(error));
     if (existing?.isSymbolicLink()) throw new Error("SYMLINK_REFUSED");
-    await fs.rename(temporary, file);
+    await renameWithRetry(temporary, file);
     await fs.chmod(file, mode);
   } finally {
     try { await handle?.close(); } catch { /* best effort */ }
@@ -390,7 +391,7 @@ export class PanelService {
     spawn = defaultSpawn,
     now = Date.now,
     env = process.env,
-    opener = env.CN_OPENER || (process.platform === "darwin" ? "open" : "start"),
+    opener = env.CN_OPENER,
     openPanel,
   }) {
     this.dataDir = dataDir;
@@ -1417,6 +1418,7 @@ export class PanelService {
     if (!successor) return;
     try {
       const child = this.spawn(process.execPath, [path.join(successor, "server", "service.mjs")], {
+        windowsHide: true,
         cwd: os.homedir(),
         detached: true,
         stdio: "ignore",
@@ -1485,7 +1487,7 @@ export async function startService(options = {}) {
   try { return await service.start(); } catch (error) { await service.close(); throw error; }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
+if (isEntryModule(import.meta.url)) {
   startService({
     dataDir: process.env.CN_DATA_DIR || process.env.PLUGIN_DATA,
     env: process.env,

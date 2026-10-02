@@ -138,15 +138,34 @@ test("a stalled transcript read cannot hold the prompt beyond the reopen budget"
   assert.ok(Date.now() - started < 2500);
 });
 
-test("the MCP server does not depend on a node on PATH (fresh Macs have none)", async () => {
+test("the MCP launcher prefers ChatGPT's bundled Node on every platform", async () => {
+  const { readFile, stat } = await import("node:fs/promises");
+  const root = new URL("../../plugins/collaborative-notes/", import.meta.url);
+  const config = JSON.parse(await readFile(new URL(".mcp.json", root), "utf8"));
+  // One command for all platforms: Unix runs the script, Windows resolves .cmd.
+  assert.equal(config.mcpServers.collab_notes.command, "./server/launch-mcp");
+  const unix = await readFile(new URL("server/launch-mcp", root), "utf8");
+  assert.ok(unix.startsWith("#!/bin/sh"));
+  assert.ok(unix.indexOf("cua_node") < unix.indexOf("command -v node"), "bundled Node before PATH");
+  assert.ok(((await stat(new URL("server/launch-mcp", root))).mode & 0o111) !== 0, "executable");
+  const runner = await readFile(new URL("server/node-run.cmd", root), "utf8");
+  assert.match(runner, /CODEX_MCP_NODE_PATH/);
+  assert.match(runner, /OpenAI\\Codex\\runtimes/);
+  assert.ok(runner.indexOf("runtimes") < runner.indexOf("where node"), "bundled Node before PATH");
+  for (const name of ["server/node-run.cmd", "server/launch-mcp.cmd"]) {
+    const text = await readFile(new URL(name, root), "utf8");
+    assert.ok(text.split("\n").slice(0, -1).every((line) => line.endsWith("\r")), `${name} uses CRLF`);
+  }
+});
+
+test("hooks keep the Mac command and run Windows through cmd-compatible launchers", async () => {
   const { readFile } = await import("node:fs/promises");
-  const config = JSON.parse(await readFile(new URL("../../plugins/collaborative-notes/.mcp.json", import.meta.url), "utf8"));
-  const server = config.mcpServers.collab_notes;
-  assert.equal(server.command, "/bin/sh");
-  const script = server.args.join(" ");
-  assert.match(script, /CODEX_MCP_NODE_PATH/);
-  assert.match(script, /ChatGPT\.app\/Contents\/Resources\/cua_node\/bin\/node/);
-  assert.ok(script.indexOf("cua_node") < script.indexOf("command -v node"), "the bundled Node comes before PATH");
+  const hooks = JSON.parse(await readFile(new URL("../../plugins/collaborative-notes/hooks/hooks.json", import.meta.url), "utf8")).hooks;
+  for (const event of ["SessionStart", "UserPromptSubmit"]) {
+    const handler = hooks[event][0].hooks[0];
+    assert.equal(handler.command, `\${CODEX_MCP_NODE_PATH:-node} "$PLUGIN_ROOT/server/hook.mjs" ${event}`);
+    assert.equal(handler.commandWindows, `cmd /d /c call "\${PLUGIN_ROOT}\\server\\node-run.cmd" "\${PLUGIN_ROOT}\\server\\hook.mjs" ${event}`);
+  }
 });
 
 test("the hook derives its plugin id from the install path, so dev and public data stay apart", async () => {

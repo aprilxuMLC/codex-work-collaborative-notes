@@ -7,7 +7,7 @@
           {
             "type": "command",
             "command": "${CODEX_MCP_NODE_PATH:-node} \"$PLUGIN_ROOT/server/hook.mjs\" SessionStart",
-            "commandWindows": "${CODEX_MCP_NODE_PATH:-node} \"$PLUGIN_ROOT/server/hook.mjs\" SessionStart",
+            "commandWindows": "cmd /d /c call \"${PLUGIN_ROOT}\\server\\node-run.cmd\" \"${PLUGIN_ROOT}\\server\\hook.mjs\" SessionStart",
             "timeout": 15
           }
         ]
@@ -19,7 +19,7 @@
           {
             "type": "command",
             "command": "${CODEX_MCP_NODE_PATH:-node} \"$PLUGIN_ROOT/server/hook.mjs\" UserPromptSubmit",
-            "commandWindows": "${CODEX_MCP_NODE_PATH:-node} \"$PLUGIN_ROOT/server/hook.mjs\" UserPromptSubmit",
+            "commandWindows": "cmd /d /c call \"${PLUGIN_ROOT}\\server\\node-run.cmd\" \"${PLUGIN_ROOT}\\server\\hook.mjs\" UserPromptSubmit",
             "timeout": 15
           }
         ]

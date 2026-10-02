@@ -1,0 +1,2 @@
+*.cmd text eol=crlf
+plugins/collaborative-notes/server/launch-mcp text eol=lf

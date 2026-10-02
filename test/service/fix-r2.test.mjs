@@ -320,3 +320,13 @@ test("plugin version is the same across the declared clients", async () => {
   assert.match(mcp, new RegExp(`serverInfo: \\{ name: "collaborative-notes", version: "${version}" \\}`));
   assert.match(appserver, new RegExp(`clientInfo = \\{ name: "collaborative-notes", version: "${version}" \\}`));
 });
+
+test("panel deep link: Mac keeps codex://browser; Windows opens the thread with browserUrl", async () => {
+  const { panelDeepLink } = await import("../../plugins/collaborative-notes/server/hook.mjs");
+  const id = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee";
+  const url = `http://127.0.0.1:4567/t/${id}?k=abc`;
+  assert.equal(panelDeepLink(url, "darwin"), `codex://browser?url=${encodeURIComponent(url)}`);
+  assert.equal(panelDeepLink(url, "win32"), `codex://threads/${id}?browserUrl=${encodeURIComponent(url)}`);
+  const other = "http://127.0.0.1:4567/help";
+  assert.equal(panelDeepLink(other, "win32"), `codex://browser?url=${encodeURIComponent(other)}`);
+});

@@ -1,0 +1,12 @@
+#!/bin/sh
+# Start the MCP server on the Node.js bundled with ChatGPT; a fresh Mac has no
+# node on PATH. Windows uses launch-mcp.cmd (Codex adds the .cmd extension).
+cd "$(dirname "$0")/.." || exit 1
+for n in "$CODEX_MCP_NODE_PATH" \
+  /Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node \
+  "$HOME/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node" \
+  "$(command -v node)"; do
+  if [ -n "$n" ] && [ -x "$n" ]; then exec "$n" ./server/mcp.mjs; fi
+done
+echo "Collaborative Notes: no Node.js runtime found (expected the one bundled with ChatGPT)" >&2
+exit 1

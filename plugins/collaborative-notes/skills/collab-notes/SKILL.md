@@ -58,8 +58,8 @@ Use only the tools above.
      latest 10 turns; "Load 20 earlier" adds more.
   2. Expand the turn, or, for anything earlier, search a few words. Search
      covers the whole conversation, even compacted parts. Or copy the passage
-     from the Codex conversation with ⌘C and paste it into the search box to
-     jump there.
+     from the Codex conversation (⌘C, or Ctrl+C on Windows) and paste it
+     into the search box to jump there.
   3. Select the exact text in the expanded original, then "Quote selection
      into note".
 

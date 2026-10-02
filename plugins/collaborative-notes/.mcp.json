@@ -1,11 +1,8 @@
 {
   "mcpServers": {
     "collab_notes": {
-      "command": "/bin/sh",
-      "args": [
-        "-c",
-        "for n in \"$CODEX_MCP_NODE_PATH\" /Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node \"$HOME/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node\" \"$(command -v node)\"; do if [ -n \"$n\" ] && [ -x \"$n\" ]; then exec \"$n\" ./server/mcp.mjs; fi; done; echo \"Collaborative Notes: no Node.js runtime found (expected the one bundled with ChatGPT)\" >&2; exit 1"
-      ],
+      "command": "./server/launch-mcp",
+      "args": [],
       "default_tools_approval_mode": "approve",
       "cwd": "."
     }

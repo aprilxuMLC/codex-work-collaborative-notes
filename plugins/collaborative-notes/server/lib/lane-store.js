@@ -122,6 +122,18 @@ async function lockHolderPid(lockPath) {
 
 const TAKEOVER_STALE_MS = 30_000;
 
+
+// Windows refuses to replace a file another process holds open (antivirus,
+// indexers, editors) with EPERM/EACCES/EBUSY for a moment; retry briefly.
+export async function renameWithRetry(from, to, { attempts = 8, delayMs = 25, rename = fs.rename } = {}) {
+  for (let attempt = 1; ; attempt += 1) {
+    try { return await rename(from, to); } catch (error) {
+      if (attempt >= attempts || !["EPERM", "EACCES", "EBUSY"].includes(error?.code)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+    }
+  }
+}
+
 async function takeOverStaleLock(lockPath, staleContent) {
   const takeoverPath = `${lockPath}.takeover`;
   let handle;
@@ -262,7 +274,7 @@ export async function writeLane(root, lane, holder, body, {
       if (!overwrite && latest.version !== expectedVersion) {
         return failure("STALE", { version: latest.version, body: latest.body });
       }
-      await fs.rename(temporary, target.file);
+      await renameWithRetry(temporary, target.file);
       const bytes = Buffer.from(body, "utf8");
       return { ok: true, version: versionForBytes(bytes) };
     } catch (error) {

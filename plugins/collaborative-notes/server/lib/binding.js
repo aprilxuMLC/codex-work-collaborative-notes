@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { LANE_KEYS } from "./lanes.js";
-import { acquireLock, releaseLock } from "./lane-store.js";
+import { acquireLock, releaseLock, renameWithRetry } from "./lane-store.js";
 
 const STATE_VERSION = 1;
 const STATE_FILE = "bindings.json";
@@ -62,7 +62,7 @@ async function writeState(dataDir, state) {
     handle = undefined;
     const existing = await fs.lstat(statePath).catch((error) => isMissing(error) ? null : Promise.reject(error));
     if (existing?.isSymbolicLink()) return failure("SYMLINK_REFUSED");
-    await fs.rename(temporary, statePath);
+    await renameWithRetry(temporary, statePath);
     return { ok: true };
   } catch {
     try { await handle?.close(); } catch { /* best effort */ }

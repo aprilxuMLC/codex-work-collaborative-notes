@@ -77,15 +77,27 @@ async function pluginVersion() {
   } catch { return undefined; }
 }
 
-/** True only if pid is alive and its command line is this plugin's service. */
-function isOurServiceProcess(pid) {
-  if (!Number.isSafeInteger(pid) || pid <= 0 || pid === process.pid) return false;
+/** The command line of a running process, or "" when it cannot be read. */
+export function processCommandLine(pid, { platform = process.platform, exec = execFileSync } = {}) {
   try {
-    const command = execFileSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 });
-    return /collaborative-notes[\\/].*server[\\/]service\.mjs/.test(command) || /server[\\/]service\.mjs/.test(command);
+    if (platform === "win32") {
+      // No `ps` on Windows: ask WMI for the command line (rare path only).
+      return String(exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+        `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`],
+      { encoding: "utf8", timeout: 5000, windowsHide: true }) || "");
+    }
+    return String(exec("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 }) || "");
   } catch {
-    return false; // cannot verify → never signal it
+    return "";
   }
+}
+
+/** True only if pid is alive and its command line is this plugin's service. */
+export function isOurServiceProcess(pid, options) {
+  if (!Number.isSafeInteger(pid) || pid <= 0 || pid === process.pid) return false;
+  const command = processCommandLine(pid, options);
+  // Cannot verify → never signal it.
+  return /server[\\/]service\.mjs/.test(command);
 }
 
 async function retireUnresponsive(info) {
@@ -140,6 +152,7 @@ export async function ensureService(dataDirOrOptions, maybeOptions = {}) {
   const servicePath = options.servicePath || fileURLToPath(new URL("../service.mjs", import.meta.url));
   const spawn = options.spawn || defaultSpawn;
   const child = spawn(nodePath, [servicePath], {
+    windowsHide: true,
     cwd: os.homedir(),
     detached: true,
     stdio: "ignore",

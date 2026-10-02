@@ -2,9 +2,8 @@
 
 > **Status:** DRAFT 0.3 · 2026-09-30 · static investigation + desktop runtime
 > probes P1–P9 + resume complete; D2 decided by the user.
-> **Scope:** ChatGPT desktop app, Codex surface, macOS only. Windows is a
-> planned later extension; nothing here is a Windows claim. Work is not
-> investigated here.
+> **Scope:** ChatGPT desktop app, Codex surface. §1–§4 are macOS evidence;
+> Windows evidence is in §W at the end. Work is not investigated here.
 > **Authority:** this file records host evidence and implementation
 > consequences. It does not define product semantics. Product authority is
 > `aprilxuMLC/dsh-collab-notes@43ce4fe1:docs/{concept,core,agent}/…`
@@ -433,3 +432,27 @@ already has internal jump-to-annotation.
 
 All probes ran on app 26.908.70816, macOS. Resume was tested after a full
 app restart with no version change.
+
+## §W. Windows (2026-10-02)
+
+Observed on a remote Windows machine (ChatGPT 26.930.2377.0, Codex mode,
+package `OpenAI.Codex`) during the 0.8.x port. **SOURCE** = the public
+`openai/codex` repository; **STATIC** = the macOS app bundle, whose desktop
+code also contains the Windows branches.
+
+| Fact | Evidence |
+|---|---|
+| ChatGPT copies its runtime under `%LOCALAPPDATA%\OpenAI\Codex`: Node at `runtimes\cua_node\<hash>\bin\node.exe` (and `bin\node.exe`); `codex.exe` at `bin\<hash>\codex.exe`. A top-level `bin\codex.exe` can be older and fail to read the current `config.toml`. Pick the newest. | RUNTIME |
+| MCP processes do not get `CODEX_MCP_NODE_PATH` or `CODEX_CLI_PATH`. A `.mcp.json` command `./server/launch-mcp` resolves to `launch-mcp.cmd` (PATHEXT). | RUNTIME |
+| npm installs an extensionless sh shim named `codex` on `PATH`; `spawn` cannot run it (ENOENT). | RUNTIME |
+| Hooks run as `<shell> <args> <command>` with the **session shell** (PowerShell on the desktop); only cmd gets the command wrapped in quotes for `/C`. A command starting with a quoted path is a plain string in PowerShell and does nothing. `cmd /d /c call "…"` works in both. | SOURCE (`codex-rs/hooks/src/engine/command_runner.rs`), RUNTIME |
+| Hook trust on Windows covers `commandWindows`: changing it shows the hooks as `modified` (`hooks/list` → `trustStatus`) and they stop running, without a visible prompt, until trusted again. macOS trust is unaffected by `commandWindows`. | RUNTIME (both platforms) |
+| `codex://browser?url=…` does nothing on Windows; `codex://threads/<id>` works; `codex://threads/<id>?browserUrl=<http(s) URL>` opens that conversation with the URL in a side-panel browser tab. | RUNTIME, STATIC (route parser) |
+| Windows will not rename a folder that is a running process's current directory. Codex starts MCP with the plugin folder as cwd, so a plugin update failed with "access denied" until the launcher changed directory first. | RUNTIME |
+| Codex's agent sandbox cannot write `~\.codex\tmp` or spawn `codex app-server` (EPERM); plugin installs and diagnostics run outside it. | RUNTIME |
+| `~\.codex\logs_2.sqlite` records `hook/started` / `hook/completed` (no thread id); `hooks/list` reports per-hook `command`, `enabled`, `trustStatus`. | RUNTIME (both platforms) |
+| Local Work conversations behave as on macOS (W7). | RUNTIME |
+
+Validated W1–W7: auto-open, setup, note and quote with return to source,
+agent write, ticked-note attach, fork, local Work.
+

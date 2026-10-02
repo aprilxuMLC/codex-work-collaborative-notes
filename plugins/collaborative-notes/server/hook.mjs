@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { resolveDataDir } from "./lib/datadir.js";
 import { ensureService, panelUrl, readSecret, serviceRequest } from "./lib/service-client.js";
 import { isValidSessionId } from "./lib/structured-item.js";
+import { isEntryModule } from "./lib/entry.js";
 
 const PANEL_REOPEN_AFTER_MS = 5 * 60 * 1000;
 
@@ -29,9 +30,33 @@ function withinMs(ms, promise) {
   ]).finally(() => clearTimeout(timer));
 }
 
-export function createPanelLauncher({ spawn = defaultSpawn, opener = process.env.CN_OPENER || (process.platform === "darwin" ? "open" : "start") } = {}) {
+// How to hand a codex:// link to the OS. Windows' `start` is a cmd built-in
+// (and cmd would expand the link's % escapes), so use the protocol handler.
+export function linkOpener(platform = process.platform, override = process.env.CN_OPENER) {
+  if (override) return { command: override, args: [] };
+  if (platform === "darwin") return { command: "open", args: [] };
+  if (platform === "win32") return { command: "rundll32.exe", args: ["url.dll,FileProtocolHandler"] };
+  return { command: "xdg-open", args: [] };
+}
+
+// The desktop link that shows a Notes page in the side panel. On Windows the
+// bare codex://browser?url= link does nothing, while a thread link carrying
+// browserUrl opens that conversation with the page in a browser tab.
+export function panelDeepLink(url, platform = process.platform) {
+  if (platform === "win32") {
+    let threadId = null;
+    try { threadId = decodeURIComponent(new URL(url).pathname.match(/^\/t\/([^/]+)$/)?.[1] ?? ""); } catch { /* not a panel URL */ }
+    if (isValidSessionId(threadId)) {
+      return `codex://threads/${encodeURIComponent(threadId)}?browserUrl=${encodeURIComponent(url)}`;
+    }
+  }
+  return `codex://browser?url=${encodeURIComponent(url)}`;
+}
+
+export function createPanelLauncher({ spawn = defaultSpawn, opener, platform = process.platform } = {}) {
+  const { command, args } = typeof opener === "string" ? { command: opener, args: [] } : linkOpener(platform);
   return (url) => new Promise((resolve) => {
-    const deepLink = `codex://browser?url=${encodeURIComponent(url)}`;
+    const deepLink = panelDeepLink(url, platform);
     let settled = false;
     const finish = (value) => {
       if (settled) return;
@@ -39,7 +64,7 @@ export function createPanelLauncher({ spawn = defaultSpawn, opener = process.env
       resolve(value);
     };
     let child;
-    try { child = spawn(opener, [deepLink], { detached: true, stdio: "ignore" }); }
+    try { child = spawn(command, [...args, deepLink], { detached: true, stdio: "ignore", windowsHide: true }); }
     catch { finish(false); return; }
     child.once?.("error", () => finish(false));
     child.once?.("spawn", () => finish(true));
@@ -100,22 +125,27 @@ export async function runHook(input, {
   request = serviceRequest,
   secretReader = readSecret,
   urlBuilder = panelUrl,
-  open = createPanelLauncher({ opener: env.CN_OPENER || (process.platform === "darwin" ? "open" : "start") }),
+  open = createPanelLauncher({ opener: env.CN_OPENER }),
   output,
 } = {}) {
   const dataDir = env.PLUGIN_DATA || env.CN_DATA_DIR;
+  // CN_HOOK_DEBUG=1 prints each step to stderr, for diagnosing a host.
+  const trace = env.CN_HOOK_DEBUG === "1" ? (message) => process.stderr.write(`[collaborative-notes hook] ${message}\n`) : () => {};
   try {
     const event = input?.hook_event_name || input?.event || process.argv[2];
     const threadId = input?.session_id;
+    trace(`event=${event} thread=${threadId} dataDir=${dataDir || "(derived)"} transcript=${input?.transcript_path ? "yes" : "no"}`);
     if (!isValidSessionId(threadId)) throw Object.assign(new Error("THREAD_UNAVAILABLE"), { code: "THREAD_UNAVAILABLE" });
     if (event !== "SessionStart" && event !== "UserPromptSubmit") return;
     const info = await ensure(dataDir || { pluginId: pluginIdFromInstall(), env });
+    trace(`service port=${info?.port} dataDir=${info?.dataDir}`);
     const secret = await secretReader(info.dataDir || dataDir);
-    await request(info, "/internal/hook-seen", {
+    const recorded = await request(info, "/internal/hook-seen", {
       method: "POST",
       headers: { Authorization: `Bearer ${secret}` },
       body: { threadId, event },
     });
+    trace(`hook-seen status=${recorded?.status}`);
     const source = input?.source;
     // Open the panel unless a page for this thread checked in recently. A
     // panel hidden with the side-panel toggle keeps polling; a closed one
@@ -124,9 +154,13 @@ export async function runHook(input, {
       const seen = await request(info, `/internal/panel-seen?threadId=${encodeURIComponent(threadId)}&withinMs=${withinMs}`, {
         method: "GET", headers: { Authorization: `Bearer ${secret}` }, timeoutMs: 1000,
       }).catch(() => null);
-      if (!seen?.value?.recent) await open(urlBuilder(info, threadId, secret));
+      trace(`panel recently seen=${Boolean(seen?.value?.recent)}`);
+      if (!seen?.value?.recent) trace(`open=${await open(urlBuilder(info, threadId, secret))}`);
     };
-    if (event === "SessionStart" && (source === "startup" || source === "resume") && await withinMs(REOPEN_BUDGET_MS, isDesktopSession(input, env))) {
+    const startDesktop = event === "SessionStart" && (source === "startup" || source === "resume")
+      && await withinMs(REOPEN_BUDGET_MS, isDesktopSession(input, env));
+    trace(`source=${source} desktop=${Boolean(startDesktop)}`);
+    if (startDesktop) {
       // A host-restored panel tab for this thread may already be polling;
       // opening again would duplicate it (seen after an app restart).
       await withinMs(REOPEN_BUDGET_MS, openUnlessSeen(10_000));
@@ -166,6 +200,7 @@ export async function runHook(input, {
       output?.write?.(`${JSON.stringify({ decision: "block", reason: String(reason) })}\n`);
     }
   } catch (error) {
+    trace(`error=${error?.code || error?.message}`);
     // Fail open: a Notes outage must never stop the user from talking to
     // Codex. Block only if the user actually has ticked notes pending.
     if (input?.hook_event_name === "UserPromptSubmit" && await hasPendingSelection(dataDir, input?.session_id)) {
@@ -184,12 +219,15 @@ async function main() {
   for await (const chunk of process.stdin) text += chunk;
   let input = {};
   try { input = text ? JSON.parse(text) : {}; } catch (error) { await writeHookError(process.env.PLUGIN_DATA, error); return; }
-  await Promise.race([
-    runHook(input, { output: process.stdout }),
-    new Promise((resolve) => setTimeout(resolve, 5000)),
+  let timer;
+  const finished = await Promise.race([
+    runHook(input, { output: process.stdout }).then(() => true),
+    new Promise((resolve) => { timer = setTimeout(() => resolve(false), 5000); }),
   ]);
+  clearTimeout(timer);
+  if (!finished) await writeHookError(process.env.PLUGIN_DATA, { code: "HOOK_TIMEOUT" });
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
+if (isEntryModule(import.meta.url)) {
   main().catch(() => {}).finally(() => { process.exitCode = 0; });
 }
