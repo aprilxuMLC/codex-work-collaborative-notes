@@ -18,7 +18,7 @@ transient workspace** beside the current conversation. It helps you and the
 agent decide what should keep occupying attention now, what can safely be set
 aside, and how to bring it back accurately when it matters again.
 
-**Release 0.7.1** is validated on macOS with ChatGPT 26.908.70816 and
+**Release 0.7.2** is validated on macOS with ChatGPT 26.908.70816 and
 26.928.31416. It works in Codex conversations and in Work conversations that
 run on your computer.
 

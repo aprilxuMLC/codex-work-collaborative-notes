@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.2
+
+- A renamed conversation's title appears in the Notes header within about
+  15 seconds (was up to about 75).
+- Install instructions: restart ChatGPT once more after trusting the hooks;
+  hook trust takes effect only at start.
+
 ## 0.7.1 — first ChatGPT desktop release
 
 Collaborative Notes for the ChatGPT desktop app (macOS). It shares its

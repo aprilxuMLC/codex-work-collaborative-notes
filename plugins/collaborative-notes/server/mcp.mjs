@@ -219,7 +219,7 @@ export function createMcpServer({
       return { jsonrpc: "2.0", id, result: {
         protocolVersion: message.params?.protocolVersion,
         capabilities: { tools: {} },
-        serverInfo: { name: "collaborative-notes", version: "0.7.1" },
+        serverInfo: { name: "collaborative-notes", version: "0.7.2" },
       } };
     }
     if (method === "initialized" || method === "notifications/initialized" || method === "ping") {

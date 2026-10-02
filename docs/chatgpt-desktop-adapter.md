@@ -2,7 +2,7 @@
 
 **English** | [中文](chatgpt-desktop-adapter.zh-CN.md)
 
-> **Version:** 0.7.1 · validated on macOS with ChatGPT 26.908.70816 and 26.928.31416.
+> **Version:** 0.7.2 · validated on macOS with ChatGPT 26.908.70816 and 26.928.31416.
 >
 > **Scope:** how this plugin realizes the Collaborative Notes
 > [Core Contract](core-contract.md) on the ChatGPT desktop app's **Codex** mode
