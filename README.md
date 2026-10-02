@@ -117,38 +117,38 @@ The default is **user-led capture with collaborative maintenance**.
 
 ## Capability overview
 
-- **Silent capture.** Writing or quoting a note never creates a conversation
-  turn. The agent is not interrupted and does not even notice.
-- **Four lanes:**
-  - L1 conversation to-do;
-  - L2 deferred work;
-  - L3 knowledge candidate;
-  - L4 lesson candidate.
-
-  Lanes are destinations, not priorities. L1 stays this conversation's
-  responsibility; L2–L4 can truly leave the main thread.
-- **Exact sources.** Quote a passage from the conversation into a note. The
-  note keeps your authored text, the exact selected text, and the identity of
-  the source message, separately.
-- **↪ Return to source.** It shows the original turn with exactly that text
-  highlighted, with earlier and later turns on demand. Sources are never
-  guessed by search: a source that cannot be read is reported as such, not
-  rebound to a similar passage.
+- **Silent capture, beside the conversation.** Write a note or quote a
+  passage while the agent keeps working. Capture never creates a
+  conversation turn: the agent is not interrupted and does not even notice.
+- **Four lanes, by destination.** L1 conversation to-do · L2 deferred work ·
+  L3 knowledge candidate · L4 lesson candidate. A lane says where a thought
+  should go, not how urgent it is: L1 stays this conversation's job, while
+  L2–L4 can truly leave the main thread.
+- **Exact sources, faithful return.** A quoted note keeps three things
+  apart: your thought, the exact sentence you selected, and the message it
+  came from. **↪ Return to source** shows that message with the sentence
+  highlighted, and the turns around it on demand. Sources are never
+  guessed: one that cannot be read is reported as such, never rebound to a
+  similar passage.
 - **Find anything in the conversation, even from long ago.** The quote view
-  opens on the latest turns and searches the **whole** conversation,
-  including parts compacted out of the agent's context. You can also copy a
-  passage from the Codex transcript and paste it to jump straight there. In
-  passing, this fills a gap in the host: Codex itself cannot search a long
-  conversation for an exact passage.
-- **Bring notes back when you choose.** Tick notes, and your next message
-  carries them to the agent as reference data, not as instructions.
-- **Work through notes with your agent.** Ask the agent to write a note for
-  you or edit one, to tell you what your notes say, or to talk them through
-  with you. This works for this conversation's notes and, read-only, for the
-  notes of another conversation you name. The agent can follow a note back
-  to its source and read the surrounding discussion, so the conversation
-  picks up from what was actually said, not from a summary. Cross-conversation
-  source re-entry is stronger here than in the DSH release.
+  searches the **whole** conversation, including the parts compacted out of
+  the agent's context, and jumps to any passage you paste. Codex itself
+  cannot search a long conversation for an exact passage.
+- **An agent that knows how to work with your notes.** The plugin comes with
+  a skill that teaches your agent how to collaborate through notes: you lead
+  what gets captured; it writes, edits and reads notes when you ask; it never
+  deletes; it tells you when to refresh; and before discussing a note it can
+  go back to the note's source, so the discussion starts from what was
+  actually said. It works with this conversation's notes and, read-only,
+  with those of another conversation you name. Cross-conversation source
+  re-entry is stronger here than in the DSH release.
+- **You decide what comes back, and when.** Tick notes, and your next
+  message carries them to the agent as reference material, not as
+  instructions.
+- **Branches without losing your place.** Fork a conversation and its own
+  Notes opens within seconds, asking which of the parent's notes to bring:
+  all, some or none. Notes whose source lies after the fork point stay
+  behind; then the two sides evolve independently.
 - **Raw material for later work, in any agent, conversation or workflow.**
   Every note keeps three things together:
   - your own thinking, in the note text;
@@ -165,40 +165,61 @@ The default is **user-led capture with collaborative maintenance**.
 
   L3 and L4 are candidates: they become knowledge or lessons only through
   your own review. See [section IV](#iv-for-downstream-agents-and-workflows).
-- **Branches.** When you fork a conversation, its own Notes opens within
-  seconds and asks whether to bring all, some or none of the parent's notes.
-  Notes whose source lies after the fork point stay behind, and the two
-  sides then evolve independently.
-- **Maintain.** Search, sort, pin, edit, and delete with confirmation. Only
-  you delete.
-- **Bilingual.** The panel follows the app language (English / 简体中文).
+- **The basics.** Search across all four lanes, sort, pin, edit, and delete
+  with confirmation. Only you delete. The panel follows the app language
+  (English / 简体中文).
 
 ## What it looks like in use
 
-- **Ask the agent for a note.** "Put this in L2: revisit the caching idea
-  after the release." The note appears in L2 after you refresh Notes.
-- **Ask about another conversation's notes.** "What did I put in L3 in the
-  conversation about the pricing model? Take me back to where that came
-  from." The agent reads that conversation's notes, read-only, and opens the
-  source discussion.
-- **Discuss chosen notes now.** Tick the two notes you want to settle, then
-  write "Let's go through these." Your message carries them to the agent.
-- **Explore from another angle in a branch.** Fork the conversation and
-  bring over only some notes. The branch takes them in a new direction
-  while the original conversation carries on with its own.
-- **Find a note.** Search the Notes panel by any word in your notes.
-- **Quote something from long ago.** Open **Quote from conversation** and
-  search a word you remember, even from a part the agent no longer keeps in
-  context. Expand the turn, select the exact sentence, and quote it into a
-  note.
-- **Return to a source together.** "Go back to the source of that note and
-  remind me what we decided around it." The agent reads the original turn
-  and the turns around it.
-- **Build a knowledge base in a separate workflow.** In a conversation set
-  up for that job: "Collect every note about attention from this project's
-  notes, with the passages they quote and the discussion around them, and
-  draft knowledge-base entries for me to review." The agent reads the note
-  files directly and follows each source back to its conversation.
+**Jot a thought without breaking the flow.** While the agent is working,
+type in the Notes box, pick a lane under **Save to lane**, and click **Save
+note**. Nothing reaches the conversation.
+
+**Quote the sentence that started a thought.**
+1. Click **Quote from conversation**. The panel lists the latest 10 turns,
+   newest first, one line each: time · what you asked → how the answer
+   starts. 📌 marks turns that already have notes.
+2. Click a line to expand that turn's full text. **Load 20 earlier** goes
+   further back.
+3. Select the exact sentence and click **Quote selection into note** (it
+   stays at the top of the view).
+4. Write your own thought beside it, or leave it empty, and **Save note**.
+   Changed your mind? **Remove quote**.
+
+**Reach back to something from long ago.** In the quote view, type a word
+or two you remember into **Search this conversation**, even if that part is
+long gone from the agent's context. Or copy the passage from the
+conversation (⌘C, or Ctrl+C on Windows) and paste it there. Click a result
+to expand that turn with the match highlighted, then quote as above.
+
+**Let the agent take notes for you.** "Put this in L2: revisit the caching
+idea after the release." "Add to that L1 note that the tests now pass." The
+agent answers "Updated — please refresh Notes", and the change appears
+after ↻.
+
+**Put chosen notes on the table.** Tick **Quote** on the notes you want to
+settle; the panel shows "2 selected — will attach to your next message".
+Then write "Let's go through these." The agent receives them with your
+message.
+
+**Go back to where it came from.** Click **↪ Return to source** on a note
+to see the sentence highlighted in its original turn. Or ask: "Go back to
+the source of that note and remind me what we decided around it." The agent
+reads the original turn and the turns around it.
+
+**Look across conversations.** "What did I put in L3 in the conversation
+about the pricing model? Take me to where it came from." The agent reads
+that conversation's notes, read-only, and opens the source discussion.
+
+**Take a question down a branch.** Fork the conversation and bring over only
+the notes that matter for the new angle. The branch explores; the original
+conversation carries on with its own notes.
+
+**Build a knowledge base in a separate workflow.** In a conversation set up
+for that job: "Collect every note about attention from this project's notes,
+with the passages they quote and the discussion around them, and draft
+knowledge-base entries for me to review." The agent reads the note files
+directly and follows each source back to its conversation.
 
 ---
 
@@ -295,15 +316,9 @@ delete that folder if you no longer want it.
    the DSH plugin, setup offers to keep using it. A different location must not
    already contain notes. To reuse notes kept elsewhere, move that folder
    to `<project>/notes` before setup.
-3. Write a note, or click **Quote from conversation**:
-   - find the turn: a recent one, by searching, or by pasting a passage you
-     copied;
-   - select the exact text;
-   - **Quote selection into note**.
-4. Ask the agent: "put this in L2", "what does my L3 note say", "go back to
-   the source of that note", "look at the L1 notes of the conversation about
-   X". It answers "Updated — please refresh Notes to see it" after any
-   change.
+3. Try it: write a note, quote a sentence, or ask the agent to note
+   something. [What it looks like in use](#what-it-looks-like-in-use) walks
+   through each.
 
 Hide or show the side panel with its toggle (⌥⌘B on macOS, View → Toggle
 Review Panel; Ctrl+Alt+B on Windows); the Notes tab stays. If you close the tab, Notes opens again with your next message
