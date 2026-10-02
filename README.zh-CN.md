@@ -1,9 +1,12 @@
-# Collaborative Notes（协作便签）for ChatGPT Desktop（Codex 和 Work）
+# Collaborative Notes（协作便签）for Codex & Work
 
 [English](README.md) | **中文**
 
-> **面向人机协作的共享注意力工作区：让一件事离开当前主线，却不离开协作。**<br>
-> **A shared attention workspace for human–agent collaboration: something can leave the main thread without leaving the collaboration.**
+**让对话继续向前，让重要的事不被弄丢。**
+
+协作便签就在 ChatGPT 桌面版 Codex 和 Work 对话的旁边。想法、问题、决定、还没收尾的事，都可以随手记下，而不把正在进行的对话带偏；等它们重要的时候再回来——一直回到它们出自的那段原文。
+
+> **面向人机协作的共享注意力工作区：让一件事离开当前主线，却不离开协作。**
 
 Collaborative Notes（协作便签）是一个面向 ChatGPT 桌面版 **Codex** 和 **Work** 模式的人机协作插件。它不是普通笔记本，也不是任务管理器、长期记忆或知识库。它在当前对话旁边增加一块**共享的临时工作区**，帮助人和 Agent 决定：什么现在应该继续占据注意力，什么可以安全放下；放下以后，又怎样在真正需要时准确地拿回来。
 

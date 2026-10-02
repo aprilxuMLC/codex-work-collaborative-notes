@@ -1,6 +1,13 @@
-# Collaborative Notes for ChatGPT Desktop (Codex and Work)
+# Collaborative Notes for Codex & Work
 
 **English** | [中文](README.zh-CN.md)
+
+**Keep the conversation moving. Keep the important things from getting lost.**
+
+Collaborative Notes sits beside your Codex and Work conversations in the
+ChatGPT desktop app. Capture ideas, questions, decisions and loose ends
+without pulling the active conversation off course. Then return to them when
+they matter, right back to the exact passage they came from.
 
 > **A shared attention workspace for human–agent collaboration: something can leave the main thread without leaving the collaboration.**
 
