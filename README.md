@@ -187,6 +187,9 @@ Then:
 2. **Trust the hooks once:** ChatGPT → Settings → Coding → Hooks →
    Collaborative Notes → trust both hooks. Codex runs plugin hooks only after
    you trust them, and again after any hook change.
+3. **Quit ChatGPT (⌘Q) and open it once more.** Trust takes effect at start:
+   until then, Notes does not open by itself and the panel shows an
+   "Automatic features are off" banner.
 
 Other ways to install:
 - **Without git:** download this repository as a ZIP, unzip it, and pass the

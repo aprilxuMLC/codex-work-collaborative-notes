@@ -109,6 +109,7 @@ CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex
 
 1. 完全退出 ChatGPT（⌘Q）再重新打开。
 2. **信任 hooks（一次即可）：** ChatGPT → 设置 → Coding → Hooks → Collaborative Notes → 信任两个 hook。Codex 只在你信任后才运行插件 hook，hook 有改动后需要再信任一次。
+3. **再完全退出（⌘Q）并重新打开一次 ChatGPT。** 信任在启动时才生效；在那之前，便签不会自动打开，面板上会显示“自动功能已关闭”的提示。
 
 其它安装方式：
 - **没有 git：** 把本仓库下载为 ZIP 并解压，在 `marketplace add` 里用解压后的文件夹路径代替 GitHub 名称。

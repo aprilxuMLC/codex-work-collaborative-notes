@@ -168,6 +168,10 @@ that hooks run outside the sandbox — RUNTIME). Installing or enabling a plugin
   - The desktop app sets `CODEX_MCP_NODE_PATH` for hooks but **not** for
     plugin MCP servers. A bare `node` command fails on a Mac without Node;
     0.5.14 launches via `/bin/sh` with the bundled `cua_node` first.
+  - Hook trust takes effect only after an app restart: trusting the hooks
+    in Settings after the post-install restart left them inactive (the panel
+    showed the "Automatic features are off" banner) until ChatGPT was
+    restarted again (public install, 2026-10-02).
   - Update path: `codex plugin marketplace upgrade` + `plugin add` took the
     second Mac from 0.5.13 to 0.5.14. Hooks stayed trusted (hooks.json
     unchanged), notes data survived, and the agent tools worked after a

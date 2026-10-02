@@ -182,7 +182,7 @@ export class AppServerClient {
 const defaultClient = new AppServerClient();
 const contextCaches = new WeakMap();
 
-export function createThreadContextResolver(appserver = defaultClient, { ttlMs = 60_000 } = {}) {
+export function createThreadContextResolver(appserver = defaultClient, { ttlMs = 15_000 } = {}) {
   const cache = new Map();
   return async function resolveThreadContext(threadId) {
     if (!isValidSessionId(threadId)) return { ok: false, code: "THREAD_UNAVAILABLE" };
