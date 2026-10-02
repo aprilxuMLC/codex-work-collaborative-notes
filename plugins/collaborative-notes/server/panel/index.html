@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Notes</title>
+  <script>
+    (() => {
+      const root = location.pathname.replace(/\/$/, "");
+      const asset = (name) => `${root}/${name}`;
+      const stylesheet = document.createElement("link");
+      stylesheet.rel = "stylesheet";
+      stylesheet.href = asset("style.css");
+      document.head.appendChild(stylesheet);
+      for (const name of ["i18n.js", "render.js", "app.js"]) {
+        const script = document.createElement("script");
+        script.src = asset(name);
+        script.defer = false;
+        document.head.appendChild(script);
+      }
+    })();
+  </script>
+</head>
+<body>
+  <div id="app" class="app" aria-live="polite">
+    <span hidden>Collaborative Notes panel — Phase 2b / Phase 3</span>
+    <header class="app-header">
+      <div class="title-block">
+        <h1 id="thread-title">Notes</h1>
+        <div id="project-name" class="project-name"></div>
+      </div>
+      <div class="header-actions">
+        <button id="help-button" class="icon-button" type="button" aria-label="Help">?</button>
+        <button id="search-button" class="icon-button" type="button" aria-label="Search">⌕</button>
+        <button id="refresh-button" class="icon-button" type="button" aria-label="Refresh">↻</button>
+      </div>
+    </header>
+
+    <div id="hooks-banner" class="banner warning" hidden></div>
+    <div id="branch-banner" class="banner info" hidden></div>
+    <div id="carry-banner" class="banner warning" hidden></div>
+    <div id="status-banner" class="banner" hidden></div>
+    <div id="conflict-banner" class="banner conflict" hidden></div>
+    <div id="confirm-banner" class="banner warning" hidden></div>
+    <section id="help-panel" class="help-panel" hidden></section>
+      <section id="setup-gate" class="setup-gate" hidden></section>
+    <section id="mirror-panel" class="mirror-panel" hidden>
+      <div class="mirror-top">
+        <div class="section-heading">
+          <h2 id="mirror-heading"></h2>
+          <div class="mirror-heading-actions">
+            <button id="mirror-quote-selection" class="primary-button" type="button"></button>
+            <button id="mirror-close" class="text-button" type="button"></button>
+          </div>
+        </div>
+        <div id="mirror-hint" class="hint"></div>
+        <label id="mirror-filter-label" class="sr-only" for="mirror-filter"></label>
+        <input id="mirror-filter" type="search" autocomplete="off">
+      </div>
+      <div id="mirror-list" class="mirror-list"></div>
+    </section>
+    <section id="source-view" class="source-view" hidden></section>
+
+    <main id="notes-main" hidden>
+      <nav id="lane-tabs" class="lane-tabs" role="tablist"></nav>
+      <section id="search-panel" class="search-panel" hidden>
+        <label id="search-label" for="search-input"></label>
+        <input id="search-input" type="search" autocomplete="off">
+        <button id="search-close" class="text-button" type="button"></button>
+      </section>
+      <section class="composer-section" aria-labelledby="composer-heading">
+        <div class="section-heading">
+          <h2 id="composer-heading"></h2>
+          <button id="new-note-button" class="text-button" type="button"></button>
+        </div>
+        <label id="composer-lane-label" for="composer-lane" class="sr-only"></label>
+        <select id="composer-lane"></select>
+        <textarea id="composer" rows="4"></textarea>
+        <section id="quoted-source" class="quoted-source" hidden></section>
+        <div class="composer-actions">
+          <button id="quote-button" class="text-button" type="button"></button>
+          <button id="save-note-button" class="primary-button" type="button"></button>
+        </div>
+      </section>
+      <section id="selection-tray" class="selection-tray" hidden></section>
+      <section class="saved-section" aria-labelledby="saved-heading">
+        <div class="saved-toolbar">
+          <h2 id="saved-heading"></h2>
+          <div class="sort-buttons">
+            <button id="newest-button" class="sort-button" type="button"></button>
+            <button id="oldest-button" class="sort-button" type="button"></button>
+          </div>
+        </div>
+        <div id="notes-list" class="notes-list"></div>
+      </section>
+    </main>
+
+    <footer id="footer" class="footer"></footer>
+  </div>
+</body>
+</html>

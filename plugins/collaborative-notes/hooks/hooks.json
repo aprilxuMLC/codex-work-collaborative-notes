@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CODEX_MCP_NODE_PATH:-node} \"$PLUGIN_ROOT/server/hook.mjs\" SessionStart",
+            "commandWindows": "${CODEX_MCP_NODE_PATH:-node} \"$PLUGIN_ROOT/server/hook.mjs\" SessionStart",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CODEX_MCP_NODE_PATH:-node} \"$PLUGIN_ROOT/server/hook.mjs\" UserPromptSubmit",
+            "commandWindows": "${CODEX_MCP_NODE_PATH:-node} \"$PLUGIN_ROOT/server/hook.mjs\" UserPromptSubmit",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

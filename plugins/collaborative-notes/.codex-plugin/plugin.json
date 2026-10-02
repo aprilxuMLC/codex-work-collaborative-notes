@@ -1,0 +1,25 @@
+{
+  "name": "collaborative-notes",
+  "version": "0.7.1",
+  "description": "A shared, silent notes side-surface beside your Codex or Work conversation: set things aside without leaving the collaboration, and return to their exact source.",
+  "author": {
+    "name": "Collaborative Notes developers"
+  },
+  "license": "MIT",
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Collaborative Notes",
+    "shortDescription": "Silent side notes with return-to-source",
+    "longDescription": "A notes panel in the side panel of Codex and local Work conversations. Capture side paths without interrupting the conversation, quote exact source text, bring notes back to the agent when you choose, and carry notes across forks.",
+    "developerName": "Collaborative Notes developers",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": []
+  }
+}
