@@ -53,10 +53,11 @@ const TOOLS = Object.freeze([
   },
   {
     name: "notes-source-reentry",
-    description: `Read the stored source of a note and its surrounding turns. ${TOOL_RULES} This is user-requested source re-entry; it does not prompt for cross-thread consent. Optional "thread": the note belongs to another conversation the user named (from notes-read with "thread"); read-only. contextWindow: turns before and after the source (default 2, up to 30); choose what the task needs.`,
+    description: `Read the stored source of a note and its surrounding turns. ${TOOL_RULES} This is user-requested source re-entry; it does not prompt for cross-thread consent. Optional "thread": the note belongs to another conversation the user named (from notes-read with "thread"); read-only. contextWindow: turns before and after the source (default 2, up to 30); choose what the task needs. before / after: turns on one side, any number, overriding contextWindow for that side; use them only when the user explicitly asks to read further. The result says whether earlier or later turns remain (hasEarlier, hasLater).`,
     inputSchema: {
       type: "object", properties: {
         lane: LANE_PROP, itemKey: { type: "string" }, contextWindow: { type: "integer", minimum: 0, maximum: 30 },
+        before: { type: "integer", minimum: 0 }, after: { type: "integer", minimum: 0 },
         thread: { type: "string", description: "Another conversation's thread id whose note this is (read-only)." },
       }, required: ["lane", "itemKey"], additionalProperties: false,
     },
@@ -77,6 +78,12 @@ function validArgs(args, required, types, optional = []) {
 
 function validContextWindow(value) {
   return value === undefined || (Number.isInteger(value) && value >= 0 && value <= 30);
+}
+
+// before/after: explicit user requests to read further; bounded only by the
+// conversation (and the history cache's own page limit).
+function validSideCount(value) {
+  return value === undefined || (Number.isSafeInteger(value) && value >= 0);
 }
 
 function reentrySourceState(error) {
@@ -155,8 +162,8 @@ export function createMcpServer({
       })) return errorResult("INVALID_ARGUMENT");
       result = await editNote(ctx, args.lane, args.itemKey, args.content, args.expectedVersion);
     } else if (name === "notes-source-reentry") {
-      if (!validArgs(args, ["lane", "itemKey"], { lane: "string", itemKey: "string" }, ["contextWindow", "thread"])
-        || !validContextWindow(args.contextWindow)) return errorResult("INVALID_ARGUMENT");
+      if (!validArgs(args, ["lane", "itemKey"], { lane: "string", itemKey: "string" }, ["contextWindow", "before", "after", "thread"])
+        || !validContextWindow(args.contextWindow) || !validSideCount(args.before) || !validSideCount(args.after)) return errorResult("INVALID_ARGUMENT");
       // A note held by another conversation the user named: read it from that
       // conversation's own binding, read-only, like notes-read with "thread".
       let noteCtx = ctx;
@@ -187,7 +194,7 @@ export function createMcpServer({
       const target = resolved.item;
       const match = visibleSourceText(target).includes(note.sourceSnapshot) ? "exact" : "not-located";
       const sourceMessage = { role: target.role, text: target.text, itemId: target.id, threadId: note.source.threadId };
-      try { window = await sourceCache.sourceTurns(note.source.threadId, note.source.itemId, args.contextWindow ?? 2, args.contextWindow ?? 2, { excludeTurnId: meta.turnId || meta.turn_id }); }
+      try { window = await sourceCache.sourceTurns(note.source.threadId, note.source.itemId, args.before ?? args.contextWindow ?? 2, args.after ?? args.contextWindow ?? 2, { excludeTurnId: meta.turnId || meta.turn_id }); }
       catch (error) {
         return successResult({ status: match, source: "resolved", match, selectedText: note.sourceSnapshot, sourceMessage, surroundingContext: [], contextUnavailable: true });
       }
@@ -205,6 +212,8 @@ export function createMcpServer({
         selectedText: note.sourceSnapshot,
         sourceMessage,
         surroundingContext,
+        hasEarlier: Boolean(window.hasEarlier),
+        hasLater: Boolean(window.hasLater),
         ...(crossThread ? { crossThread: true, readOnly: true } : {}),
       };
     } else return errorResult("METHOD_NOT_FOUND");
@@ -220,7 +229,7 @@ export function createMcpServer({
       return { jsonrpc: "2.0", id, result: {
         protocolVersion: message.params?.protocolVersion,
         capabilities: { tools: {} },
-        serverInfo: { name: "collaborative-notes", version: "0.8.7" },
+        serverInfo: { name: "collaborative-notes", version: "0.8.8" },
       } };
     }
     if (method === "initialized" || method === "notifications/initialized" || method === "ping") {

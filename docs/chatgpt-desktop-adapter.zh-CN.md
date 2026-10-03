@@ -2,7 +2,7 @@
 
 [English](chatgpt-desktop-adapter.md) | **中文**
 
-> **版本：** 0.8.7 · 在 macOS（ChatGPT 26.908.70816、26.928.31416）和 Windows（ChatGPT 26.930.2377.0）上验证。
+> **版本：** 0.8.8 · 在 macOS（ChatGPT 26.908.70816、26.928.31416）和 Windows（ChatGPT 26.930.2377.0）上验证。
 >
 > **范围：** 本插件如何在 ChatGPT 桌面版的 **Codex** 模式，以及**在用户电脑上运行的 Work** 对话上实现 Collaborative Notes [Core Contract](core-contract.md)。这是本版本的宿主描述（host profile）；产品语义以 Core Contract、[Agent 指南](agent-guide.zh-CN.md) 和[概念](concept.zh-CN.md)为准。观察到的宿主事实见 [Codex](codex/capability-map.md) 和 [Work](work/capability-map.md) 能力图（英文）。
 
@@ -43,7 +43,7 @@
 ## 5. 回到来源（Core §§5, 8）
 
 - **人：** “↪ 回到来源”显示来源消息，高亮其中 `S` 的每一处字面匹配，可按需展开前后几轮。来源消息总是直接读取；缓存只提供上下文。来源可读但没有字面匹配时标为“不精确”；来源读不到时如实报告“不可用”，保留快照。另一个对话里的来源需要在面板里按次确认。
-- **Agent：** `notes-source-reentry` 返回 `source: resolved | unavailable | unauthorized` 和 `match: exact | not-located`、来源消息，以及由 agent 决定、每侧最多 30 轮的上下文。带 `thread` 参数时，可以只读地回到用户点名的另一个对话里那条便签的来源。
+- **Agent：** `notes-source-reentry` 返回 `source: resolved | unavailable | unauthorized` 和 `match: exact | not-located`、来源消息，以及由 agent 决定、每侧最多 30 轮的上下文；用户明确要求往前或往后多读时，`before` / `after` 可以取任意轮数，`hasEarlier` / `hasLater` 表示是否还有更多。带 `thread` 参数时，可以只读地回到用户点名的另一个对话里那条便签的来源。
 - 绝不为来源搜索相似段落，也绝不重新绑定来源。
 
 ## 6. 把便签带给 Agent（Core §8）

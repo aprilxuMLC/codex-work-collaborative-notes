@@ -98,5 +98,12 @@ test("Phase 3 MCP re-entry reports exact and not-located source states", async (
     assert.equal(crossValue.sourceMessage.itemId, "msg-1");
     const tooWide = await server.callTool("notes-source-reentry", { lane: "conversation_todo", itemKey: sourced.itemKey, contextWindow: 31 }, { threadId, plugin_id: "collaborative-notes@collaborative-notes" });
     assert.equal(tooWide.isError, true);
+    // An explicit request to read further: before/after have no 30-turn cap.
+    const far = await server.callTool("notes-source-reentry", { lane: "conversation_todo", itemKey: sourced.itemKey, before: 500, after: 1000 }, { threadId, plugin_id: "collaborative-notes@collaborative-notes" });
+    const farValue = JSON.parse(far.content[0].text);
+    assert.equal(far.isError, undefined);
+    assert.deepEqual({ source: farValue.source, hasEarlier: farValue.hasEarlier, hasLater: farValue.hasLater }, { source: "resolved", hasEarlier: false, hasLater: false });
+    const negative = await server.callTool("notes-source-reentry", { lane: "conversation_todo", itemKey: sourced.itemKey, before: -1 }, { threadId, plugin_id: "collaborative-notes@collaborative-notes" });
+    assert.equal(negative.isError, true);
   } finally { await fs.rm(base, { recursive: true, force: true }); }
 });

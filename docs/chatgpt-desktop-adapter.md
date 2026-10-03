@@ -2,7 +2,7 @@
 
 **English** | [中文](chatgpt-desktop-adapter.zh-CN.md)
 
-> **Version:** 0.8.7 · validated on macOS (ChatGPT 26.908.70816, 26.928.31416) and
+> **Version:** 0.8.8 · validated on macOS (ChatGPT 26.908.70816, 26.928.31416) and
 > Windows (ChatGPT 26.930.2377.0).
 >
 > **Scope:** how this plugin realizes the Collaborative Notes
@@ -103,7 +103,9 @@ The bundled `codex` is used for app-server access.
 - **Agent:** `notes-source-reentry` returns
   `source: resolved | unavailable | unauthorized` and
   `match: exact | not-located`, the source message, and up to 30 turns of
-  context on each side, as the agent chooses.
+  context on each side, as the agent chooses. When the user explicitly asks
+  to read further, `before` / `after` take any number of turns on one side;
+  `hasEarlier` / `hasLater` say whether more remains.
   - With `thread`, it re-enters a note held by another conversation the user
     named, read-only.
 - Never search for a similar passage or rebind a source.

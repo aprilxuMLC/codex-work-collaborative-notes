@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.8
+
+- When you explicitly ask the agent to read further around a note's source,
+  it can now read any number of turns before or after it (`before` /
+  `after`). The default reach stays small (up to 30 turns each side).
+- Panel help (Chinese) names the quote button correctly.
+
 ## 0.8.7 — Windows
 
 - **Windows support** for Codex conversations and Work conversations that

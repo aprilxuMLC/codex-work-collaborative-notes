@@ -41,7 +41,7 @@ async function makeFixture() {
   await createNote({ dataDir, projectPath: project, holder: parentId }, "conversation_todo", { content: "parent note" });
   const threads = new Map([
     [parentId, { id: parentId, cwd: project, name: "Parent", originator: "desktop", threadSource: "user" }],
-    [childId, { id: childId, cwd: project, name: "Child", originator: "desktop", threadSource: "user", forkedFromId: parentId, createdAt: "2026-10-01T00:00:00.000Z" }],
+    [childId, { id: childId, cwd: project, name: "Child", originator: "desktop", threadSource: "user", forkedFromId: parentId, createdAt: new Date().toISOString() }],
   ]);
   const appserver = {
     async readThread(id) { return threads.get(id) || { id }; },
@@ -50,7 +50,9 @@ async function makeFixture() {
     const thread = threads.get(id);
     return thread ? { holder: id, projectPath: thread.cwd, title: thread.name } : { ok: false, code: "THREAD_UNAVAILABLE" };
   };
-  const sessionDir = path.join(codexHome, "sessions", "2026", "10", "01");
+  // The watcher reads today's and yesterday's session folders (local date).
+  const today = new Date();
+  const sessionDir = path.join(codexHome, "sessions", String(today.getFullYear()), String(today.getMonth() + 1).padStart(2, "0"), String(today.getDate()).padStart(2, "0"));
   await fs.mkdir(sessionDir, { recursive: true });
   return { base, dataDir, codexHome, project, sessionDir, threads, appserver, context };
 }

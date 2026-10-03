@@ -22,7 +22,7 @@ guess, or reuse a thread id, path, or holder.
 | `notes-read {lane, thread?}` | Read one lane. Returns notes with `itemKey`, `authored`, optional `sourceSnapshot` and `source`, and the lane `version`. `thread` reads another conversation's lane, read-only (see below). |
 | `notes-write {lane, content}` | Create one plain note the user asked for. |
 | `notes-edit {lane, itemKey, content, expectedVersion}` | Change one note's authored text. Read first; use the fresh `itemKey` and `version`. |
-| `notes-source-reentry {lane, itemKey, contextWindow?, thread?}` | Read a sourced note's exact source message and nearby turns; `thread` for another conversation's note (read-only). |
+| `notes-source-reentry {lane, itemKey, contextWindow?, before?, after?, thread?}` | Read a sourced note's exact source message and nearby turns; `thread` for another conversation's note (read-only). |
 | `notes-open-panel {}` | Open the current Notes panel only when the user explicitly asks to open Notes; desktop sessions only. |
 
 `lane` accepts `L1`–`L4`, the display name, or the internal key:
@@ -112,7 +112,9 @@ Use only the tools above.
   exchange is already in your context, use it instead of rereading.
 - Reasoning, tool calls, and file changes are not quotable source text.
 - `contextWindow` (turns before and after the source, up to 30) is yours to
-  choose: read as much as the task needs, no more.
+  choose: read as much as the task needs, no more. When the user explicitly
+  asks to read further, use `before` / `after` (any number of turns on that
+  side); `hasEarlier` / `hasLater` say whether more remains.
 - For a note in **another conversation** the user named (read with
   `notes-read {lane, thread}`), call `notes-source-reentry {lane, itemKey,
   thread}`. The user's request to see that note's source is the
