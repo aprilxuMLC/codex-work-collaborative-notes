@@ -61,6 +61,7 @@ Collaborative Notes 尝试把**注意力本身也变成一种可以共同管理�
 
 | 便签 | 未来消费者 | 后续工作 |
 |---|---|---|
+| **L1 会话待办** | 你和本对话里的 Agent（包括它的分支） | 到时机时带回、讨论解决，然后关闭 |
 | **L2 延后工作** | BACKLOG / 工作规划 Agent | 排序、合并、安排、执行 |
 | **L3 知识候选** | 知识整理 Agent / Workflow | 核验、去重、重组、正式沉淀 |
 | **L4 复盘素材** | 复盘 / Agent improvement Workflow | 复盘、验证、接受，再决定是否改变 Rule / Skill / Prompt / Workflow |

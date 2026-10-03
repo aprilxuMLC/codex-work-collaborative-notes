@@ -95,6 +95,7 @@ reactivation. Downstream consumers do the real processing:
 
 | Note | Future consumer | Downstream work |
 |---|---|---|
+| **L1 Conversation to-do** | you and the agent, in this conversation (and its branches) | bringing it back when it is due, settling it, then closing it |
 | **L2 Deferred work** | backlog / work-planning agent | sorting, merging, scheduling, execution |
 | **L3 Knowledge candidate** | knowledge agent / workflow | verification, deduplication, restructuring, formalization |
 | **L4 Lesson candidate** | retrospective / agent-improvement workflow | review, validation, acceptance, then possible Rule / Skill / Prompt / Workflow changes |
