@@ -2,7 +2,7 @@
 
 [English](chatgpt-desktop-adapter.md) | **中文**
 
-> **版本：** 0.8.8 · 在 macOS（ChatGPT 26.908.70816、26.928.31416）和 Windows（ChatGPT 26.930.2377.0）上验证。
+> **版本：** 0.8.9 · 在 macOS（ChatGPT 26.908.70816、26.928.31416）和 Windows（ChatGPT 26.930.2377.0）上验证。
 >
 > **范围：** 本插件如何在 ChatGPT 桌面版的 **Codex** 模式，以及**在用户电脑上运行的 Work** 对话上实现 Collaborative Notes [Core Contract](core-contract.md)。这是本版本的宿主描述（host profile）；产品语义以 Core Contract、[Agent 指南](agent-guide.zh-CN.md) 和[概念](concept.zh-CN.md)为准。观察到的宿主事实见 [Codex](codex/capability-map.md) 和 [Work](work/capability-map.md) 能力图（英文）。
 

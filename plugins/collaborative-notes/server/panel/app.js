@@ -527,22 +527,45 @@
       return;
     }
     const header = makeElement("div", "source-header");
-    header.append(makeElement("h2", "source-heading", `${data.thread?.title || data.thread?.id || ""} · ${String(data.thread?.id || "").slice(0, 12)} · ${laneLabel(sourceView.laneKey)}`));
+    header.append(makeElement("h2", "source-heading", `${data.thread?.title || String(data.thread?.id || "").slice(0, 12)} · ${laneLabel(sourceView.laneKey)}`));
     header.append(button(t("label.backToNotes"), "text-button", () => { sourceView = null; renderAll(); }));
     panel.append(header);
-    panel.append(makeElement("div", "quoted-source-text source-snapshot", data.snapshot));
+    // What the user wrote first, then the sentence it quotes, then the turns.
+    const noteBox = makeElement("section", "source-note");
+    noteBox.append(makeElement("div", "source-block-label", t("label.yourNote")));
+    noteBox.append(makeElement("div", sourceView.noteText ? "source-note-text" : "source-note-text faint", sourceView.noteText || t("label.emptyNote")));
+    panel.append(noteBox);
+    const quoteBox = makeElement("section", "source-quote");
+    quoteBox.append(makeElement("div", "source-block-label", t("label.quotedSource")));
+    quoteBox.append(makeElement("div", "quoted-source-text", data.snapshot));
+    panel.append(quoteBox);
+    const earlier = button(data.hasEarlier === false ? t("label.noEarlier") : `↑ ${t("label.showEarlier")}`, "text-button source-more", () => loadSourceView(sourceView.before + 1, sourceView.after));
+    earlier.disabled = data.hasEarlier === false;
+    panel.append(earlier);
     const body = makeElement("div", "source-turns");
+    const turns = data.turns || [];
+    const targetIndex = turns.findIndex((turn) => (turn.items || []).some((item) => item.id === data.targetItemId));
     let targetArticle;
-    for (const turn of data.turns || []) {
-      const section = makeElement("section", "mirror-turn");
-      section.append(makeElement("h3", "mirror-turn-heading", turn.turnId || ""));
+    turns.forEach((turn, index) => {
+      const offset = targetIndex < 0 ? null : index - targetIndex;
+      const section = makeElement("section", offset === 0 ? "source-turn source-turn-target" : "source-turn");
+      const distance = Math.abs(offset ?? 0);
+      const label = offset === null ? "" : offset === 0 ? t("label.turnQuoted")
+        : t(`${offset < 0 ? "label.turnBefore" : "label.turnAfter"}${distance === 1 ? "One" : ""}`, { n: distance });
+      const time = (turn.items || []).find((item) => item.time)?.time;
+      section.append(makeElement("div", "source-turn-label", [label, time ? mirrorTime(time) : ""].filter(Boolean).join(" · ")));
+      let previousRole = null;
       for (const item of turn.items || []) {
         const article = renderMessageArticle(item);
         if (item.id === data.targetItemId) targetArticle = article;
+        // The role tag sits outside the message so it never joins its text,
+        // and appears only when the speaker changes.
+        if (item.role !== previousRole) section.append(makeElement("div", "source-role", t(item.role === "user" ? "label.roleYou" : "label.roleAgent")));
+        previousRole = item.role;
         section.append(article);
       }
       body.append(section);
-    }
+    });
     panel.append(body);
     const count = targetArticle ? global.CollaborativeNotesRenderer.highlightLiteral(targetArticle, data.snapshot) : 0;
     if (!targetArticle || count === 0) {
@@ -552,11 +575,9 @@
       targetArticle.querySelector("mark")?.scrollIntoView?.({ block: "center" });
     }
     const actions = makeElement("div", "source-actions");
-    const earlier = button(data.hasEarlier === false ? t("label.noEarlier") : t("label.showEarlier"), "text-button", () => loadSourceView(sourceView.before + 1, sourceView.after));
-    earlier.disabled = data.hasEarlier === false;
-    const later = button(data.hasLater === false ? t("label.noLater") : t("label.showLater"), "text-button", () => loadSourceView(sourceView.before, sourceView.after + 1));
+    const later = button(data.hasLater === false ? t("label.noLater") : `↓ ${t("label.showLater")}`, "text-button source-more", () => loadSourceView(sourceView.before, sourceView.after + 1));
     later.disabled = data.hasLater === false;
-    actions.append(earlier, later);
+    actions.append(later);
     const link = makeElement("a", "text-button", t("label.openOriginalThread"));
     link.href = `codex://threads/${encodeURIComponent(data.thread?.id || "")}`;
     link.target = "_blank";
@@ -584,7 +605,7 @@
     const crossThread = note.source.threadId !== threadId;
     const open = async () => {
       clearStatus();
-      sourceView = { laneKey, itemKey: note.itemKey, snapshot: note.sourceSnapshot, crossThread, before: 1, after: 1, data: null };
+      sourceView = { laneKey, itemKey: note.itemKey, snapshot: note.sourceSnapshot, noteText: note.authored || "", crossThread, before: 1, after: 1, data: null };
       renderAll();
       await loadSourceView(1, 1);
     };

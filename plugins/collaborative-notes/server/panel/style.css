@@ -121,7 +121,20 @@ textarea { resize: vertical; line-height: 1.4; }
 .quoted-source-text, .note-source-text { margin-top: 5px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
 .source-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .source-heading { min-width: 0; overflow-wrap: anywhere; }
-.source-snapshot { margin: 8px 0; padding: 7px; border: 1px dashed color-mix(in srgb, #7c3aed 30%, transparent); }
+.source-note, .source-quote { margin: 8px 0 0; padding: 8px; border-radius: 6px; }
+.source-note { border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); background: color-mix(in srgb, CanvasText 4%, Canvas); }
+.source-quote { border: 1px solid color-mix(in srgb, #7c3aed 30%, transparent); background: color-mix(in srgb, #8b5cf6 8%, Canvas); }
+.source-block-label, .source-turn-label { color: GrayText; font-size: 11px; font-weight: 600; }
+.source-note-text { margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
+.source-note-text.faint { color: GrayText; }
+.source-more { justify-self: start; margin: 8px 0 0; }
+.source-turns { margin-top: 8px; }
+.source-turn { display: grid; gap: 6px; padding: 8px; border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 8px; }
+.source-turn-target { border: 2px solid #7c3aed; background: color-mix(in srgb, #8b5cf6 6%, Canvas); }
+.source-turn .mirror-message { border: none; border-left: 3px solid; border-radius: 0; padding: 2px 8px; }
+.source-turn .mirror-message.user-message { border-left-color: #64748b; }
+.source-turn .mirror-message.assistant-message { border-left-color: #2563eb; }
+.source-role { color: GrayText; font-size: 11px; }
 .not-exact-source { outline: 2px solid #d97706; outline-offset: 2px; }
 .source-view mark { padding: 0 1px; }
 .section-heading, .saved-toolbar { justify-content: space-between; gap: 8px; margin-bottom: 5px; }

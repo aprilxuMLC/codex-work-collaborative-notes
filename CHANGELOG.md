@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.9
+
+- "↪ Return to source" is easier to read: your note and the quoted text
+  come first, then each turn in its own box (previous turns, the quoted
+  turn highlighted, next turns), with "You" / "Agent" marking who speaks.
+  "Show earlier turn" sits above the turns and "Show later turn" below.
+
 ## 0.8.8
 
 - When you explicitly ask the agent to read further around a note's source,
