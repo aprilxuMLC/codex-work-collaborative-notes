@@ -2,7 +2,7 @@
 
 [English](chatgpt-desktop-adapter.md) | **中文**
 
-> **版本：** 0.8.10 · 在 macOS（ChatGPT 26.908.70816、26.928.31416）和 Windows（ChatGPT 26.930.2377.0）上验证。
+> **版本：** 0.8.11 · 在 macOS（ChatGPT 26.908.70816、26.928.31416）和 Windows（ChatGPT 26.930.2377.0）上验证。
 >
 > **范围：** 本插件如何在 ChatGPT 桌面版的 **Codex** 模式，以及**在用户电脑上运行的 Work** 对话上实现 Collaborative Notes [Core Contract](core-contract.md)。这是本版本的宿主描述（host profile）；产品语义以 Core Contract、[Agent 指南](agent-guide.zh-CN.md) 和[概念](concept.zh-CN.md)为准。观察到的宿主事实见 [Codex](codex/capability-map.md) 和 [Work](work/capability-map.md) 能力图（英文）。
 
@@ -29,6 +29,7 @@
 
 - **Holder（所属对话）：** Codex thread id，机械绑定：来自 hook 的 session id、MCP 调用的 `_meta.threadId`、面板 URL 路径。Agent 从不提供 holder。
 - **项目：** thread 的 `cwd`。每个项目一次性设置，绑定一个便签根目录（默认 `<项目>/notes`；Decision 64）。配置的根目录缺失时如实报告，绝不重新创建。
+- **分道显示名称：** 每个安装一份设置（插件数据里的 `config.json`），所有项目共用，设置步骤会提示这一点。便签按分道的 key 保存，所以改名只改变显示。
 - **布局：** `<根目录>/<分道>/<threadId>.md`，分道为 `conversation_todo`、`deferred_work`、`knowledge_candidate`、`lesson_candidate`。
 - **格式：** `dsh-note v1` 块，与 DSH 版本相同，加一行 `dsh-meta host: codex`。
 - **插件数据：** `~/.codex/plugins/data/<插件>-<市场>/`：绑定、分道配置、每个对话的勾选和偏好、服务记录与密钥、分支检测记录。便签内容只保存在便签根目录，唯一的例外是：附到某条消息上的便签文字（包括其中引用的原文）会随该轮的记录保存，使该轮在 24 小时内重试时得到相同内容；这些副本 24 小时后从磁盘清除，删除便签本身时不会立即清除。卸载插件不会删除这个目录，需要时可以手动删除。

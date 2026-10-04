@@ -175,3 +175,4 @@ textarea { resize: vertical; line-height: 1.4; }
 .selection-row.missing { color: #b42318; }
 
 .note-source-preview { margin-left: 6px; color: GrayText; }
+.setup-global { margin: 4px 0; padding: 5px 8px; border-left: 3px solid #d97706; background: color-mix(in srgb, #f59e0b 12%, Canvas); font-weight: 600; }

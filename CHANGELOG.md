@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.11
+
+- Setup now says that lane names apply to all your projects: renaming a lane
+  in one project renames it everywhere. Renaming changes display only, never
+  the notes.
+
 ## 0.8.10
 
 - "↪ Return to source" opens on the quoted turn alone, so a long previous

@@ -46,7 +46,7 @@ const PANEL_ASSETS = Object.freeze({
 });
 const MAX_REQUEST_BYTES = 1024 * 1024;
 const DEFAULT_IDLE_MS = 12 * 60 * 60 * 1000;
-const PLUGIN_VERSION = "0.8.10";
+const PLUGIN_VERSION = "0.8.11";
 const MAX_REFERENCE_CHARS = 8000;
 const REFERENCE_COPY_TTL_MS = 24 * 60 * 60 * 1000;
 

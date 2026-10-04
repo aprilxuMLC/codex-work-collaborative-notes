@@ -2,7 +2,7 @@
 
 **English** | [中文](chatgpt-desktop-adapter.zh-CN.md)
 
-> **Version:** 0.8.10 · validated on macOS (ChatGPT 26.908.70816, 26.928.31416) and
+> **Version:** 0.8.11 · validated on macOS (ChatGPT 26.908.70816, 26.928.31416) and
 > Windows (ChatGPT 26.930.2377.0).
 >
 > **Scope:** how this plugin realizes the Collaborative Notes
@@ -53,6 +53,9 @@ The bundled `codex` is used for app-server access.
 - **Project:** the thread's `cwd`. A one-time setup per project binds a notes
   root, by default `<project>/notes` (Decision 64). A missing configured root
   is reported, never recreated.
+- **Lane display names** are one setting per install (plugin data
+  `config.json`), shared by all projects; the setup step says so. Notes are
+  stored by lane key, so renaming changes display only.
 - **Layout:** `<root>/<lane>/<threadId>.md` for the lanes `conversation_todo`,
   `deferred_work`, `knowledge_candidate` and `lesson_candidate`.
 - **Format:** `dsh-note v1` blocks, as in the DSH release, with a

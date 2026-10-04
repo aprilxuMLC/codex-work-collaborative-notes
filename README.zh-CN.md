@@ -10,7 +10,7 @@
 
 Collaborative Notes（协作便签）是一个面向 ChatGPT 桌面版 **Codex** 和 **Work** 模式的人机协作插件。它不是普通笔记本，也不是任务管理器、长期记忆或知识库。它在当前对话旁边增加一块**共享的临时工作区**，帮助人和 Agent 决定：什么现在应该继续占据注意力，什么可以安全放下；放下以后，又怎样在真正需要时准确地拿回来。
 
-**0.8.10 版本**在 macOS（ChatGPT 26.928.31416）和 Windows（ChatGPT 26.930.2377.0）上验证，适用于 Codex 对话，以及在你电脑上运行的 Work 对话。
+**0.8.11 版本**在 macOS（ChatGPT 26.928.31416）和 Windows（ChatGPT 26.930.2377.0）上验证，适用于 Codex 对话，以及在你电脑上运行的 Work 对话。
 
 它延续 [Collaborative Notes for DeepSeek Harness](https://github.com/aprilxuMLC/dsh-collaborative-notes)，共享同一套产品契约；ChatGPT 桌面版上的具体实现见[适配规范](docs/chatgpt-desktop-adapter.zh-CN.md)。
 
@@ -180,7 +180,7 @@ $CODEX = (Get-ChildItem "$env:LOCALAPPDATA\OpenAI\Codex\bin" -Recurse -Filter co
 ## 第一次使用
 
 1. 在一个项目里打开 **Codex** 对话，或一个**在你电脑上运行**的 **Work** 对话（"Where should this chat run?" → On your computer），发送一条消息。**便签**面板会在侧栏里自动打开。
-2. 在新项目里：确认四条分道的名称；选择便签存放位置（默认 `<项目>/notes`，也可以选别的文件夹）。如果 `<项目>/notes` 里已经有协作便签（例如来自 DSH 插件），设置时可以选择继续使用；其它位置里不能已经有便签；想继续用放在别处的便签，请在设置前把那个文件夹移到 `<项目>/notes`。
+2. 在新项目里：确认四条分道的名称（对你所有的项目生效；改名只改变显示，不影响任何便签）；选择便签存放位置（默认 `<项目>/notes`，也可以选别的文件夹）。如果 `<项目>/notes` 里已经有协作便签（例如来自 DSH 插件），设置时可以选择继续使用；其它位置里不能已经有便签；想继续用放在别处的便签，请在设置前把那个文件夹移到 `<项目>/notes`。
 3. 试一试：写一条便签、引用一句话，或者让 agent 帮你记一条。[用起来是什么样](#用起来是什么样)里有逐项说明。
 
 用侧栏开关收起或显示侧栏（macOS 上是 ⌥⌘B，或菜单里的“隐藏/显示侧边面板”；Windows 上是 Ctrl+Alt+B），便签标签页会一直保留。如果关掉了标签，关掉约 5 分钟后你发下一条消息时会自动重新打开；也可以对 agent 说“打开便签”。面板里的 **?** 有上面这些的完整说明。

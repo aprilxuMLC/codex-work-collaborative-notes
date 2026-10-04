@@ -18,7 +18,7 @@ transient workspace** beside the current conversation. It helps you and the
 agent decide what should keep occupying attention now, what can safely be set
 aside, and how to bring it back accurately when it matters again.
 
-**Release 0.8.10** is validated on macOS (ChatGPT 26.928.31416) and on
+**Release 0.8.11** is validated on macOS (ChatGPT 26.928.31416) and on
 Windows (ChatGPT 26.930.2377.0). It works in Codex conversations and in Work
 conversations that run on your computer.
 
@@ -321,7 +321,8 @@ delete that folder if you no longer want it.
    your computer** ("Where should this chat run?" → On your computer), in a
    project, and send a message. The **Notes** panel opens in the side panel.
 2. In a new project:
-   - confirm the four lane names;
+   - confirm the four lane names (they apply to all your projects; renaming
+     only changes how lanes are displayed, never the notes);
    - choose where notes are stored (default `<project>/notes`, or another
      folder).
 

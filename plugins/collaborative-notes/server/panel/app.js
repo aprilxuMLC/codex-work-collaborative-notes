@@ -1164,7 +1164,7 @@
     if (context.setup.proposedPath) gate.append(makeElement("p", "setup-path", t("setup.proposed", { path: context.setup.proposedPath })));
 
     const names = makeElement("div", "setup-names");
-    names.append(makeElement("h3", "", t("setup.names")), makeElement("p", "hint", t("setup.nameHint")));
+    names.append(makeElement("h3", "", t("setup.names")), makeElement("p", "setup-global", t("setup.namesGlobal")), makeElement("p", "hint", t("setup.nameHint")));
     for (const key of LANE_KEYS) {
       const row = makeElement("label", "setup-name-row");
       row.append(makeElement("span", "", laneFor(key).displayId || key));
