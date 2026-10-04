@@ -208,6 +208,18 @@ to see the sentence highlighted in its original turn. Or ask: "Go back to
 the source of that note and remind me what we decided around it." The agent
 reads the original turn and the turns around it.
 
+**Bring back what the conversation has forgotten.** After a long
+conversation is compacted, the agent no longer remembers its early details,
+but your notes still hold the original sentence and where it came from. Tick
+the note so your next message carries it, or say "go back to the source of
+that note": the agent rereads the original discussion.
+
+**Keep key constraints within reach.** Rules written in AGENTS.md or
+CLAUDE.md are read at the start, and over a long conversation they tend to
+fade from the agent's attention. Note the few constraints that matter most
+and pin them, so they stay at the top of the lane; when the work comes near
+them, tick them, and your next message puts them back in front of the agent.
+
 **Look across conversations.** "What did I put in L3 in the conversation
 about the pricing model? Take me to where it came from." The agent reads
 that conversation's notes, read-only, and opens the source discussion.
