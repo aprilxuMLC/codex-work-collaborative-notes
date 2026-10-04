@@ -2,7 +2,7 @@
 
 **English** | [中文](chatgpt-desktop-adapter.zh-CN.md)
 
-> **Version:** 0.8.9 · validated on macOS (ChatGPT 26.908.70816, 26.928.31416) and
+> **Version:** 0.8.10 · validated on macOS (ChatGPT 26.908.70816, 26.928.31416) and
 > Windows (ChatGPT 26.930.2377.0).
 >
 > **Scope:** how this plugin realizes the Collaborative Notes

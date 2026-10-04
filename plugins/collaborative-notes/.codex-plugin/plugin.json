@@ -1,6 +1,6 @@
 {
   "name": "collaborative-notes",
-  "version": "0.8.9",
+  "version": "0.8.10",
   "description": "A shared, silent notes side-surface beside your Codex or Work conversation: set things aside without leaving the collaboration, and return to their exact source.",
   "author": {
     "name": "Collaborative Notes developers"

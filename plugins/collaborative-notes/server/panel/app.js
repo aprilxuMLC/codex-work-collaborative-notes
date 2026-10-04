@@ -605,9 +605,10 @@
     const crossThread = note.source.threadId !== threadId;
     const open = async () => {
       clearStatus();
-      sourceView = { laneKey, itemKey: note.itemKey, snapshot: note.sourceSnapshot, noteText: note.authored || "", crossThread, before: 1, after: 1, data: null };
+      sourceView = { laneKey, itemKey: note.itemKey, snapshot: note.sourceSnapshot, noteText: note.authored || "", crossThread, before: 0, after: 0, data: null };
       renderAll();
-      await loadSourceView(1, 1);
+      // Open on the quoted turn alone; earlier and later turns load on request.
+      await loadSourceView(0, 0);
     };
     if (crossThread) {
       requestConfirm(t("label.crossThreadConfirm", { title: note.source.threadId }), open);

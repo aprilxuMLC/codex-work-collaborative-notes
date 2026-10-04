@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.10
+
+- "↪ Return to source" opens on the quoted turn alone, so a long previous
+  turn never pushes it out of view. Earlier and later turns load with the
+  buttons as before.
+
 ## 0.8.9
 
 - "↪ Return to source" is easier to read: your note and the quoted text

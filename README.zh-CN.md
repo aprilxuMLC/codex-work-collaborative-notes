@@ -10,7 +10,7 @@
 
 Collaborative Notes（协作便签）是一个面向 ChatGPT 桌面版 **Codex** 和 **Work** 模式的人机协作插件。它不是普通笔记本，也不是任务管理器、长期记忆或知识库。它在当前对话旁边增加一块**共享的临时工作区**，帮助人和 Agent 决定：什么现在应该继续占据注意力，什么可以安全放下；放下以后，又怎样在真正需要时准确地拿回来。
 
-**0.8.9 版本**在 macOS（ChatGPT 26.928.31416）和 Windows（ChatGPT 26.930.2377.0）上验证，适用于 Codex 对话，以及在你电脑上运行的 Work 对话。
+**0.8.10 版本**在 macOS（ChatGPT 26.928.31416）和 Windows（ChatGPT 26.930.2377.0）上验证，适用于 Codex 对话，以及在你电脑上运行的 Work 对话。
 
 它延续 [Collaborative Notes for DeepSeek Harness](https://github.com/aprilxuMLC/dsh-collaborative-notes)，共享同一套产品契约；ChatGPT 桌面版上的具体实现见[适配规范](docs/chatgpt-desktop-adapter.zh-CN.md)。
 
