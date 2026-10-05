@@ -224,7 +224,7 @@ test("F11 delegated context-dependent capture is refused unless the user agrees 
 test("F14 notes-open-panel opens only a desktop session and does not return the deeplink", async () => {
   const opened = [];
   const server = createMcpServer({
-    resolveDataDirectory: async () => "/tmp/notes-open-panel-test",
+    platform: "darwin", resolveDataDirectory: async () => "/tmp/notes-open-panel-test",
     contextResolver: async () => ({ projectPath: "/tmp" }),
     ensure: async () => ({ port: 4321, dataDir: "/tmp/notes-open-panel-test" }),
     secretReader: async () => "d".repeat(64),

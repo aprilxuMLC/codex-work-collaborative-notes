@@ -16,7 +16,12 @@ test("datadir derives the plugin data directory and validates plugin ids", async
       path.join(home, ".codex", "plugins", "data", "collaborative-notes-collaborative-notes"));
     const directory = await resolveDataDir({ pluginId: "collaborative-notes@collaborative-notes", homeDir: home });
     assert.equal(directory, dataDirectoryPath("collaborative-notes@collaborative-notes", { homeDir: home }));
-    assert.equal((await fs.stat(directory)).mode & 0o777, 0o700);
+    assert.equal((await fs.stat(directory)).isDirectory(), true);
+    if (process.platform !== "win32") assert.equal((await fs.stat(directory)).mode & 0o777, 0o700);
+    // Windows does not expose POSIX chmod bits through stat; exercise actual use.
+    const probe = path.join(directory, "fixture-probe");
+    await fs.writeFile(probe, "fixture");
+    assert.equal(await fs.readFile(probe, "utf8"), "fixture");
     assert.throws(() => parsePluginId("bad/name@marketplace"), /PLUGIN_ID_INVALID/);
   } finally { await fs.rm(home, { recursive: true, force: true }); }
 });

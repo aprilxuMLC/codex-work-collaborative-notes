@@ -290,7 +290,7 @@ test("R2-12 launcher and callers fail safely when the opener emits error", async
 
   const opened = [];
   const server = createMcpServer({
-    resolveDataDirectory: async () => "/tmp/notes-r2-launcher",
+    platform: "darwin", resolveDataDirectory: async () => "/tmp/notes-r2-launcher",
     contextResolver: async () => ({ projectPath: "/tmp" }),
     ensure: async () => ({ port: 4321, dataDir: "/tmp/notes-r2-launcher" }),
     secretReader: async () => "c".repeat(64),

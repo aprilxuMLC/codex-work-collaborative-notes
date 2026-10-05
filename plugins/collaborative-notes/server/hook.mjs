@@ -121,6 +121,7 @@ async function hasPendingSelection(dataDir, threadId) {
 
 export async function runHook(input, {
   env = process.env,
+  platform = process.platform,
   ensure = ensureService,
   request = serviceRequest,
   secretReader = readSecret,
@@ -151,11 +152,26 @@ export async function runHook(input, {
     // panel hidden with the side-panel toggle keeps polling; a closed one
     // does not, so the next message after a while brings it back.
     const openUnlessSeen = async (withinMs) => {
-      const seen = await request(info, `/internal/panel-seen?threadId=${encodeURIComponent(threadId)}&withinMs=${withinMs}`, {
+      const recentWindow = platform === "win32" ? PANEL_REOPEN_AFTER_MS : withinMs;
+      const seen = await request(info, `/internal/panel-seen?threadId=${encodeURIComponent(threadId)}&withinMs=${recentWindow}`, {
         method: "GET", headers: { Authorization: `Bearer ${secret}` }, timeoutMs: 1000,
       }).catch(() => null);
       trace(`panel recently seen=${Boolean(seen?.value?.recent)}`);
-      if (!seen?.value?.recent) trace(`open=${await open(urlBuilder(info, threadId, secret))}`);
+      if (seen?.value?.recent) return;
+      if (platform === "win32") {
+        // Automatic opening is fail-closed: inability to check in does not
+        // prove that opening a possibly hidden page is appropriate.
+        if (seen?.status !== 200 || typeof seen.value?.recent !== "boolean") {
+          trace("panel auto-open skipped=check-in-unavailable");
+          return;
+        }
+        const result = await request(info, "/internal/panel/open", {
+          method: "POST", headers: { Authorization: `Bearer ${secret}` }, body: { threadId }, timeoutMs: 1000,
+        }).catch(() => null);
+        trace(`panel opened=${Boolean(result?.value?.opened)}`);
+        return;
+      }
+      trace(`open=${await open(urlBuilder(info, threadId, secret))}`);
     };
     const startDesktop = event === "SessionStart" && (source === "startup" || source === "resume")
       && await withinMs(REOPEN_BUDGET_MS, isDesktopSession(input, env));

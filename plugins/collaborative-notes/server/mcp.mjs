@@ -9,7 +9,7 @@ import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { isValidSessionId } from "./lib/structured-item.js";
 import { MirrorHistoryCache, visibleSourceText } from "./lib/thread-mirror.js";
-import { ensureService, panelUrl, readSecret } from "./lib/service-client.js";
+import { ensureService, panelUrl, readSecret, serviceRequest } from "./lib/service-client.js";
 import { launchPanel } from "./hook.mjs";
 import { isEntryModule } from "./lib/entry.js";
 
@@ -99,6 +99,7 @@ export function createMcpServer({
   ensure = ensureService,
   secretReader = readSecret,
   open = launchPanel,
+  platform = process.platform,request = serviceRequest,
   historyCache,
   // The MCP call carries no transcript path; the thread record names its originator.
   desktop = async (threadId) => /desktop/i.test(String((await appserver.readThread(threadId).catch(() => null))?.originator ?? "")),
@@ -123,6 +124,10 @@ export function createMcpServer({
       try {
         const info = await ensure({ dataDir, env });
         const secret = await secretReader(info.dataDir || dataDir);
+        if (platform === "win32") {
+          const result = await request(info, "/internal/panel/open", { method: "POST", headers: { Authorization: `Bearer ${secret}` }, body: { threadId: holder }, timeoutMs: 3000 });
+          return result.status === 200 && result.value?.opened === true ? successResult(result.value) : errorResult("NOTES_PANEL_UNAVAILABLE");
+        }
         const opened = await open(panelUrl(info, holder, secret));
         return opened === true ? successResult({ opened: true }) : errorResult("NOTES_PANEL_UNAVAILABLE");
       } catch { return errorResult("NOTES_PANEL_UNAVAILABLE"); }
@@ -229,7 +234,7 @@ export function createMcpServer({
       return { jsonrpc: "2.0", id, result: {
         protocolVersion: message.params?.protocolVersion,
         capabilities: { tools: {} },
-        serverInfo: { name: "collaborative-notes", version: "0.8.11" },
+        serverInfo: { name: "collaborative-notes", version: "0.8.12" },
       } };
     }
     if (method === "initialized" || method === "notifications/initialized" || method === "ping") {

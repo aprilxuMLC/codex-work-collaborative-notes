@@ -2,7 +2,7 @@ import { isEntryModule } from "./lib/entry.js";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getItemKey, parseLaneBody } from "./lib/structured-item.js";
 import { promises as fs } from "node:fs";
-import { spawn as defaultSpawn } from "node:child_process";
+import { execFile as defaultExecFile, spawn as defaultSpawn } from "node:child_process";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -12,6 +12,7 @@ import { resolveDataDir } from "./lib/datadir.js";
 import { createThreadContextResolver, getDefaultAppServer } from "./lib/appserver.js";
 import { detectLocale } from "./lib/locale.js";
 import { acquireLock, releaseLock, readLane, renameWithRetry, versionForBytes, writeLane } from "./lib/lane-store.js";
+import { serviceLockHolderAlive } from "./lib/service-client.js";
 import { LANE_KEYS, isLaneKey, resolveLanes, sanitizeLaneConfig } from "./lib/lanes.js";
 import { filterEligibleBody, rekeyCarriedBody, mergeCarryBodies, carryMarker } from "./lib/carry.js";
 import { renderReferenceText, resolveReferenceTargets } from "./lib/reference-binding.js";
@@ -46,7 +47,7 @@ const PANEL_ASSETS = Object.freeze({
 });
 const MAX_REQUEST_BYTES = 1024 * 1024;
 const DEFAULT_IDLE_MS = 12 * 60 * 60 * 1000;
-const PLUGIN_VERSION = "0.8.11";
+const PLUGIN_VERSION = "0.8.12";
 const MAX_REFERENCE_CHARS = 8000;
 const REFERENCE_COPY_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -135,6 +136,39 @@ async function bodyJson(request) {
   const text = Buffer.concat(chunks).toString("utf8");
   if (!text) return {};
   try { return JSON.parse(text); } catch { throw Object.assign(new Error("INVALID_JSON"), { code: "INVALID_JSON" }); }
+}
+
+export function parseWindowsDriveRoots(output) {
+  return [...new Set(String(output || "").match(/[A-Za-z]:\\(?=\s|$)/g) || [])]
+    .map((root) => root.toUpperCase()).sort();
+}
+
+async function listWindowsDrives(systemRoot = process.env.SystemRoot, execFile = defaultExecFile) {
+  const executable = path.win32.join(systemRoot || "C:\\Windows", "System32", "fsutil.exe");
+  try {
+    const { stdout } = await new Promise((resolve, reject) => {
+      execFile(executable, ["fsinfo", "drives"], {
+        encoding: "utf8", timeout: 2000, maxBuffer: 16 * 1024, windowsHide: true,
+      }, (error, output) => error ? reject(error) : resolve({ stdout: output }));
+    });
+    const drives = parseWindowsDriveRoots(stdout);
+    return drives.length ? { drives } : { drives: [], drivesError: "DRIVE_LIST_UNAVAILABLE" };
+  } catch {
+    return { drives: [], drivesError: "DRIVE_LIST_UNAVAILABLE" };
+  }
+}
+
+export function windowsPathBreadcrumbs(directory) {
+  const parsed = path.win32.parse(path.win32.resolve(directory));
+  const root = parsed.root;
+  const rootLabel = root.startsWith("\\\\") ? root.replace(/[\\\\]+$/, "") : root;
+  const crumbs = [{ name: rootLabel, path: root }];
+  let current = root;
+  for (const part of parsed.dir.slice(root.length).split(path.win32.sep).filter(Boolean).concat(parsed.base ? [parsed.base] : [])) {
+    current = path.win32.join(current, part);
+    crumbs.push({ name: part, path: current });
+  }
+  return crumbs;
 }
 
 function jsonHeaders() {
@@ -228,6 +262,11 @@ function validThread(threadId) {
   return isValidSessionId(threadId);
 }
 
+function canonicalPanelUrl(port, thread, from) {
+  const keep = validThread(from) ? `?from=${encodeURIComponent(from)}` : "";
+  return `http://127.0.0.1:${port}/t/${encodeURIComponent(thread)}${keep}`;
+}
+
 function dateDirectory(date) {
   const year = String(date.getFullYear()).padStart(4, "0");
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -308,20 +347,27 @@ function validateMkdirName(name) {
     && !/[\u0000-\u001f\u007f]/.test(name);
 }
 
-async function listFolders(directory) {
-  if (typeof directory !== "string" || !path.isAbsolute(directory)) return failure("PATH_INVALID");
-  let stat;
-  try { stat = await fs.lstat(directory); } catch { return failure("PATH_UNAVAILABLE"); }
-  if (stat.isSymbolicLink() || !stat.isDirectory()) return failure("PATH_INVALID");
-  const entries = await fs.readdir(directory, { withFileTypes: true });
-  return {
-    ok: true,
-    path: path.resolve(directory),
-    parent: path.dirname(path.resolve(directory)),
-    entries: entries.filter((entry) => !entry.name.startsWith(".") && entry.isDirectory())
-      .map((entry) => ({ name: entry.name, path: path.join(path.resolve(directory), entry.name) }))
-      .sort((a, b) => a.name.localeCompare(b.name)),
-  };
+async function listFolders(directory, { platform = process.platform, pathPlatform = process.platform, driveEnumerator = listWindowsDrives, systemRoot } = {}) {
+  const pathApi = pathPlatform === "win32" ? path.win32 : path.posix;
+  const driveInfo = platform === "win32" ? await driveEnumerator(systemRoot) : null;
+  const extra = platform === "win32" ? { drives: driveInfo.drives, ...(driveInfo.drivesError ? { drivesError: driveInfo.drivesError } : {}) } : {};
+  if (typeof directory !== "string" || !pathApi.isAbsolute(directory)) return { ...failure("PATH_INVALID"), ...extra };
+  const current = pathApi.resolve(directory);
+  try {
+    const stat = await fs.lstat(current);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) return { ...failure("PATH_INVALID"), ...extra };
+    const entries = await fs.readdir(current, { withFileTypes: true });
+    return {
+      ok: true,
+      path: current,
+      parent: pathApi.dirname(current),
+      entries: entries.filter((entry) => !entry.name.startsWith(".") && entry.isDirectory())
+        .map((entry) => ({ name: entry.name, path: pathApi.join(current, entry.name) }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      ...(platform === "win32" ? { breadcrumbs: windowsPathBreadcrumbs(current) } : {}),
+      ...extra,
+    };
+  } catch { return { ...failure("PATH_UNAVAILABLE"), ...extra }; }
 }
 
 async function mkdirFolder(parent, name) {
@@ -393,8 +439,17 @@ export class PanelService {
     env = process.env,
     opener = env.CN_OPENER,
     openPanel,
+    platform = process.platform,
+    nativePickerFactory,
+    driveEnumerator = listWindowsDrives,
   }) {
     this.dataDir = dataDir;
+    this.nativePlatform = platform;
+    this.nativePickerFactory = nativePickerFactory;
+    this.driveEnumerator = driveEnumerator;
+    this.nativePickerPromise = null;
+    this.nativePickerInstance = null;
+    this.nativeClosing = false;
     this.secret = secret;
     this.appserver = appserver || getDefaultAppServer();
     this.threadContext = threadContext || createThreadContextResolver(this.appserver);
@@ -421,6 +476,9 @@ export class PanelService {
     this.selections = new Map();
     this.consumed = new Map();
     this.panelSeen = new Map();
+    // Cookie authentication is remembered separately from window presence.
+    this.panelAuthenticated = new Map();
+    this.panelInstances = new Map();this.panelRetired = new Map();this.panelOpenings = new Map();this.panelLaunches = new Map();
     this.selectionDir = path.join(this.dataDir, "selections");
     this.selectionLocks = new Map();
     this.mirrorCache = new MirrorHistoryCache(this.appserver, { now: this.now });
@@ -433,6 +491,69 @@ export class PanelService {
     this.forkSessionRoot = path.join(this.env.CODEX_HOME || path.join(os.homedir(), ".codex"), "sessions");
   }
 
+  async getNativePicker() {
+    if (this.nativePlatform !== "win32") throw Object.assign(new Error("NOT_FOUND"), { code: "NOT_FOUND" });
+    if (this.nativeClosing) throw Object.assign(new Error("SERVICE_CLOSING"), { code: "SERVICE_CLOSING" });
+    if (!this.nativePickerPromise) {
+      const promise = (async () => {
+        const instance = this.nativePickerFactory
+          ? await this.nativePickerFactory({ dataDir: this.dataDir, env: this.env })
+          : new (await import("./lib/windows-folder-picker.js")).NativeFolderPicker({ dataDir: this.dataDir, env: this.env });
+        this.nativePickerInstance = instance;
+        if (this.nativeClosing) { await instance.close(); throw Object.assign(new Error("SERVICE_CLOSING"), { code: "SERVICE_CLOSING" }); }
+        return instance;
+      })();
+      this.nativePickerPromise = promise;
+      promise.catch(() => { if (this.nativePickerPromise === promise) this.nativePickerPromise = null; });
+    }
+    return this.nativePickerPromise;
+  }
+
+  rememberPanel(thread, id, create = false) {
+    if (!/^[a-f0-9]{32}$/.test(id || "")) return false;
+    const now = Date.now(), pages = this.panelInstances.get(thread) || new Map(), retired = this.panelRetired.get(thread);
+    if (retired) { for (const [key, at] of retired) if (now - at >= 300_000) retired.delete(key);if (retired.has(id)) return false; }
+    for (const [key, at] of pages) if (now - at >= 300_000) pages.delete(key);
+    if (!create && !pages.has(id)) return false;
+    if (!pages.has(id) && pages.size >= 64) pages.delete(pages.keys().next().value);
+    pages.set(id, now);this.panelInstances.set(thread, pages);return true;
+  }
+  forgetPanel(thread, id) {
+    if (!/^[a-f0-9]{32}$/.test(id || "")) return;
+    const retired = this.panelRetired.get(thread) || new Map(), now = Date.now();
+    for (const [key, at] of retired) if (now - at >= 300_000) retired.delete(key);
+    retired.delete(id);if (retired.size >= 128) retired.delete(retired.keys().next().value);
+    retired.set(id, now);this.panelRetired.set(thread, retired);
+    const pages = this.panelInstances.get(thread);
+    if (!pages?.delete(id)) return;
+    if (!pages.size) { this.panelInstances.delete(thread);this.panelSeen.delete(thread);this.panelLaunches.delete(thread); }
+  }
+  async requestPanelOpen(thread) {
+    if (this.nativePlatform !== "win32" || this.nativeClosing || !validThread(thread)) return { opened: false };
+    if (this.panelOpenings.has(thread)) return this.panelOpenings.get(thread);
+    const task = Promise.resolve().then(async () => {
+      if (this.nativeClosing) return { opened: false };
+      const now = Date.now(), authenticated = this.panelAuthenticated.has(thread);
+      if (!authenticated && now - (this.panelLaunches.get(thread) || 0) < 10_000)
+        return { opened: true, pending: true };
+      // The host reuses the canonical address. A stale heartbeat or a lost
+      // pagehide notification must never suppress a real open/reopen request.
+      const url = authenticated
+        ? this.panelAuthenticated.get(thread)
+        : panelUrl({ port: this.server.address().port }, thread, this.secret);
+      this.panelLaunches.set(thread, now);
+      try {
+        const opened = await this.openPanel(url);
+        if (opened !== true && this.panelLaunches.get(thread) === now) this.panelLaunches.delete(thread);
+        return { opened: opened === true };
+      } catch (error) {
+        if (this.panelLaunches.get(thread) === now) this.panelLaunches.delete(thread);
+        throw error;
+      }
+    });
+    this.panelOpenings.set(thread, task);
+    try { return await task; } finally { if (this.panelOpenings.get(thread) === task) this.panelOpenings.delete(thread); }
+  }
   async context(threadId) {
     if (!validThread(threadId)) return failure("THREAD_UNAVAILABLE");
     const result = await this.threadContext(threadId);
@@ -612,7 +733,8 @@ export class PanelService {
     opened[childId] = new Date(this.now()).toISOString();
     await this.writeOpenedForks(opened);
     this.openedForkThisScan = true;
-    await this.openPanel(panelUrl({ port: this.server.address().port }, childId, this.secret));
+    if (this.nativePlatform === "win32") await this.requestPanelOpen(childId);
+    else await this.openPanel(panelUrl({ port: this.server.address().port }, childId, this.secret));
     return true;
   }
 
@@ -914,6 +1036,14 @@ export class PanelService {
       if (!sameSecret(this.secret, String(req.headers.authorization || "").replace(/^Bearer\s+/, ""))) {
         return sendError(res, "FORBIDDEN", 403);
       }
+      if (url.pathname === "/internal/panel/open" && req.method === "POST" && this.nativePlatform === "win32") {
+        try {
+          const body = await bodyJson(req);
+          if (!validThread(body.threadId)) return sendError(res, "THREAD_UNAVAILABLE", 400);
+          const result = await this.requestPanelOpen(body.threadId);
+          return sendJson(res, result.opened ? 200 : 503, result);
+        } catch { return sendError(res, "PANEL_UNAVAILABLE", 503); }
+      }
       if (url.pathname === "/internal/panel-seen" && req.method === "GET") {
         const thread = url.searchParams.get("threadId") || "";
         const at = this.panelSeen.get(thread) || 0;
@@ -970,7 +1100,14 @@ export class PanelService {
         const queryToken = url.searchParams.get("k");
         const cookieToken = readCookie(req, cookieName(panelThread));
         const supplied = queryToken || cookieToken;
-        if (!tokenEqual(expected, supplied)) return sendPanelReopen(res, (req.headers["accept-language"] || "").startsWith("zh") ? "zh" : "en");
+        if (!tokenEqual(expected, supplied)) {
+          if (this.nativePlatform === "win32" && assetName === "index.html" && !queryToken) {
+            this.panelAuthenticated.delete(panelThread);this.panelLaunches.delete(panelThread);
+          }
+          return sendPanelReopen(res, (req.headers["accept-language"] || "").startsWith("zh") ? "zh" : "en");
+        }
+        if (this.nativePlatform === "win32" && assetName === "index.html" && tokenEqual(expected, cookieToken))
+          this.panelAuthenticated.set(panelThread, canonicalPanelUrl(this.server.address().port, panelThread, url.searchParams.get("from")));
         if (queryToken && assetName === "index.html" && typeof this.server?.listen === "function") {
           // Keep "from" (set by the branch link) so the panel can offer a way back.
           const from = url.searchParams.get("from");
@@ -980,7 +1117,12 @@ export class PanelService {
         }
         const asset = PANEL_ASSETS[assetName];
         if (!asset) return sendError(res, "NOT_FOUND", 404);
-        const content = await this.fs.readFile(asset.file);
+        let content = await this.fs.readFile(asset.file);
+        if (assetName === "index.html" && this.nativePlatform === "win32") {
+          const id = randomBytes(16).toString("hex");
+          this.rememberPanel(panelThread, id, true);
+          content = Buffer.from(content.toString("utf8").replace('<html ', `<html data-cn-panel="${id}" `));
+        }
         res.writeHead(200, {
           "content-type": asset.type,
           "cache-control": "no-store",
@@ -1014,11 +1156,80 @@ export class PanelService {
     if (apiThread === undefined || !validThread(apiThread)) return sendError(res, "NOT_FOUND", 404);
     const expectedToken = panelToken(this.secret, apiThread);
     const cookieToken = readCookie(req, cookieName(apiThread));
-    if (!tokenEqual(expectedToken, req.headers["x-cn-token"] || cookieToken)) return sendError(res, "TOKEN_INVALID", 403);
-    // An authenticated panel page for this thread is alive (it polls every 3 s).
-    this.panelSeen.set(apiThread, Date.now());
+    if (!tokenEqual(expectedToken, req.headers["x-cn-token"] || cookieToken)) {
+      if (this.nativePlatform === "win32" && !tokenEqual(expectedToken, cookieToken)) {
+        this.panelAuthenticated.delete(apiThread);this.panelLaunches.delete(apiThread);
+      }
+      return sendError(res, "TOKEN_INVALID", 403);
+    }
+    // A valid Cookie proves authentication, not that a tab is still open.
+    if (this.nativePlatform === "win32" && tokenEqual(expectedToken, cookieToken) && !this.panelAuthenticated.has(apiThread)) {
+      let from;
+      try {
+        const page = new URL(req.headers.referer);
+        if (page.origin === expectedOrigin && page.pathname === `/t/${encodeURIComponent(apiThread)}`) from = page.searchParams.get("from");
+      } catch { /* A missing referrer uses the normal panel address. */ }
+      this.panelAuthenticated.set(apiThread, canonicalPanelUrl(this.server.address().port, apiThread, from));
+    }
+    if (this.nativePlatform === "win32" && url.pathname === `/api/t/${encodeURIComponent(apiThread)}/panel/closed` && req.method === "POST") {
+      try { const body = await bodyJson(req);this.forgetPanel(apiThread, body.panelId);return sendJson(res, 200, { ok: true }); }
+      catch { return sendError(res, "INVALID_ARGUMENT", 400); }
+    }
+    if (this.nativePlatform === "win32" && url.pathname === `/api/t/${encodeURIComponent(apiThread)}/panel/present` && req.method === "POST") {
+      try {
+        const body = await bodyJson(req);
+        if (!/^[a-f0-9]{32}$/.test(body.panelId || "")) return sendError(res, "INVALID_ARGUMENT", 400);
+        this.forgetPanel(apiThread, body.previousId);
+        const live = this.rememberPanel(apiThread, body.panelId, true);
+        return sendJson(res, 200, { panelId: body.panelId, closed: !live });
+      } catch { return sendError(res, "INVALID_ARGUMENT", 400); }
+    }
+    const pageId = req.headers["x-cn-panel-instance"];
+    const knownPage = this.nativePlatform !== "win32" || !pageId || this.rememberPanel(apiThread, pageId);
+    if (knownPage) this.panelSeen.set(apiThread, Date.now());
+    else res.setHeader("x-cn-panel-refresh", "1");
     const context = await this.context(apiThread);
     if (context.ok === false) return sendError(res, context.code, errorStatus(context.code));
+    const nativePickerPath = "/api/t/" + encodeURIComponent(apiThread) + "/fs/native-picker";
+    const nativeSetupPath = "/api/t/" + encodeURIComponent(apiThread) + "/setup/native";
+    if (url.pathname === nativePickerPath || url.pathname === nativeSetupPath) {
+      if (this.nativePlatform !== "win32") return sendError(res, "NOT_FOUND", 404);
+      if (req.method !== "POST") return sendError(res, "METHOD_NOT_ALLOWED", 405);
+      const abort = new AbortController();
+      const disconnected = () => { if (!res.writableEnded) abort.abort(); };
+      res.once?.("close", disconnected);
+      try {
+        const body = await bodyJson(req);
+        if (!body || typeof body !== "object" || Array.isArray(body)) throw Object.assign(new Error("INVALID_ARGUMENT"), { code: "INVALID_ARGUMENT" });
+        const keys = url.pathname === nativePickerPath ? ["initialPath", "title"] : ["action", "customPath"];
+        if (Object.keys(body).some(key => !keys.includes(key))) throw Object.assign(new Error("INVALID_ARGUMENT"), { code: "INVALID_ARGUMENT" });
+        const current = await getSetupState(this.dataDir, context.projectPath);
+        if (current.state === "INITIALIZED") throw Object.assign(new Error("ALREADY_INITIALIZED"), { code: "ALREADY_INITIALIZED" });
+        if (current.state !== "UNINITIALIZED") throw Object.assign(new Error(current.code || "LOCATION_INVALID"), { code: current.code || "LOCATION_INVALID" });
+        if (current.legacy) throw Object.assign(new Error("LEGACY_ADOPTION_REQUIRED"), { code: "LEGACY_ADOPTION_REQUIRED" });
+        if (abort.signal.aborted || this.nativeClosing) throw Object.assign(new Error("SERVICE_CLOSING"), { code: "SERVICE_CLOSING" });
+        if (url.pathname === nativePickerPath) {
+          const native = await this.getNativePicker();
+          const result = await native.select({ initialPath: body.initialPath || context.projectPath, title: body.title, signal: abort.signal });
+          if (!res.destroyed) return sendJson(res, 200, result);
+        } else {
+          if (body.action !== "custom") throw Object.assign(new Error("BAD_ACTION"), { code: "BAD_ACTION" });
+          const { setup } = await import("./lib/binding.js");
+          const result = await setup(this.dataDir, context.projectPath, "custom", body.customPath);
+          if (!res.destroyed) return result.ok ? sendJson(res, 200, result) : sendError(res, result.code, errorStatus(result.code));
+        }
+      } catch (error) {
+        if (!res.destroyed) {
+          const status = error.code === "PICKER_BUSY" || error.code === "ALREADY_INITIALIZED" ? 409
+            : error.code === "PICKER_TIMEOUT" ? 504
+            : error.code === "PICKER_UNAVAILABLE" || error.code === "SERVICE_CLOSING" ? 503
+            : error.code === "PICKER_FAILED" ? 502 : 400;
+          return sendError(res, error.code || "PICKER_FAILED", status);
+        }
+      } finally { res.off?.("close", disconnected); }
+      return;
+    }
+
 
     if (url.pathname === `/api/t/${encodeURIComponent(apiThread)}/selection`) {
       if (req.method === "GET") {
@@ -1182,6 +1393,7 @@ export class PanelService {
       const carry = setupState.state === "INITIALIZED" ? await this.carryStatus(apiThread, context) : null;
       return sendJson(res, 200, {
         serviceVersion: PLUGIN_VERSION,
+        ...(this.nativePlatform === "win32" ? { nativeFolderPicker: true } : {}),
         title: context.title || null,
         projectPath: context.projectPath,
         locale,
@@ -1287,8 +1499,11 @@ export class PanelService {
     }
 
     if (url.pathname === `/api/t/${encodeURIComponent(apiThread)}/fs` && req.method === "GET") {
-      const result = await listFolders(url.searchParams.get("path"));
-      return result.ok ? sendJson(res, 200, result) : sendError(res, result.code, errorStatus(result.code));
+      const result = await listFolders(url.searchParams.get("path"), {
+        platform: this.nativePlatform, pathPlatform: process.platform,
+        driveEnumerator: this.driveEnumerator, systemRoot: this.env.SystemRoot,
+      });
+      return result.ok ? sendJson(res, 200, result) : sendJson(res, errorStatus(result.code), result);
     }
     if (url.pathname === `/api/t/${encodeURIComponent(apiThread)}/fs/mkdir` && req.method === "POST") {
       try {
@@ -1359,7 +1574,7 @@ export class PanelService {
   }
 
   async start() {
-    this.lock = await acquireLock(this.lockPath, { staleOnlyIfHolderDead: true, ...(this.lockOptions || {}) });
+    this.lock = await acquireLock(this.lockPath, { staleOnlyIfHolderDead: true, isHolderAlive: serviceLockHolderAlive, ...(this.lockOptions || {}) });
     if (!this.lock.ok) throw Object.assign(new Error(this.lock.code), { code: this.lock.code });
     this.server = http.createServer((req, res) => {
       this.request(req, res).catch((error) => {
@@ -1396,6 +1611,7 @@ export class PanelService {
     await writeJsonAtomic(path.join(this.dataDir, "service.json"), info);
     this.idleTimer = setInterval(() => {
       this.mirrorCache.evict(this.now());
+      if (this.nativePickerInstance?.active) return;
       if (this.now() - this.lastRequestAt >= this.idleMs) this.close();
       // A plugin upgrade removes the old install directory; retire this instance.
       else if (this.pluginRoot) fs.access(this.pluginRoot).catch(() => this.handOverToSuccessor());
@@ -1430,6 +1646,12 @@ export class PanelService {
   }
 
   async close() {
+    if (this.nativePlatform === "win32") {
+      this.nativeClosing = true;
+      if (this.nativePickerPromise) {
+        try { await (await this.nativePickerPromise).close(); } catch { /* no native process was started */ }
+      }
+    }
     if (this.idleTimer) clearInterval(this.idleTimer);
     this.idleTimer = null;
     if (this.forkWatchTimer) clearInterval(this.forkWatchTimer);

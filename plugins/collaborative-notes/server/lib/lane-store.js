@@ -134,7 +134,7 @@ export async function renameWithRetry(from, to, { attempts = 8, delayMs = 25, re
   }
 }
 
-async function takeOverStaleLock(lockPath, staleContent) {
+async function takeOverStaleLock(lockPath, staleContent, isHolderAlive = holderAlive) {
   const takeoverPath = `${lockPath}.takeover`;
   let handle;
   try {
@@ -146,7 +146,7 @@ async function takeOverStaleLock(lockPath, staleContent) {
     try {
       const stat = await fs.lstat(takeoverPath);
       const holder = await lockHolderPid(takeoverPath);
-      if (Date.now() - stat.mtimeMs > TAKEOVER_STALE_MS && (holder === null || !holderAlive(holder))) {
+      if (Date.now() - stat.mtimeMs > TAKEOVER_STALE_MS && (holder === null || !isHolderAlive(holder))) {
         await fs.unlink(takeoverPath);
       }
     } catch { /* gone or unreadable: retry later */ }
@@ -176,6 +176,7 @@ export async function acquireLock(lockPath, {
   // Long-lived holders (the panel service) keep their lock for hours: only a
   // dead holder makes such a lock stale, never its age.
   staleOnlyIfHolderDead = false,
+  isHolderAlive = holderAlive,
 } = {}) {
   const deadline = Date.now() + waitMs;
   let staleRemoved = false;
@@ -195,7 +196,7 @@ export async function acquireLock(lockPath, {
         staleContent = await fs.readFile(lockPath, "utf8");
         if (staleOnlyIfHolderDead) {
           const pid = await lockHolderPid(lockPath);
-          if (pid !== null) stale = !holderAlive(pid);
+          if (pid !== null) stale = !isHolderAlive(pid);
           else stale = Date.now() - stat.mtimeMs > staleMs;
         } else {
           const timestamp = await lockTimestamp(lockPath);
@@ -208,7 +209,7 @@ export async function acquireLock(lockPath, {
         // Take over a stale lock only while holding its takeover lock, and only
         // if it still holds the content judged stale. A live lock file is never
         // renamed or removed, so two contenders cannot both end up holding it.
-        const takeover = await takeOverStaleLock(lockPath, staleContent);
+        const takeover = await takeOverStaleLock(lockPath, staleContent, isHolderAlive);
         if (takeover === "refused") return failure("SYMLINK_REFUSED");
         if (takeover !== "busy") { staleRemoved = true; continue; }
       }

@@ -151,7 +151,8 @@ describe("lane-store", () => {
     assert.equal(stale.body, "one");
     assert.equal((await writeLane(root, lane, holder, "x".repeat(1024 * 1024 + 1), { overwrite: true })).code, "TOO_LARGE");
 
-    await fs.symlink(path.join(root, "elsewhere"), path.join(root, "deferred_work"));
+    await fs.mkdir(path.join(root, "elsewhere"));
+    await fs.symlink(path.join(root, "elsewhere"), path.join(root, "deferred_work"), process.platform === "win32" ? "junction" : "dir");
     assert.equal((await readLane(root, "deferred_work", holder)).code, "SYMLINK_REFUSED");
   });
 

@@ -2,8 +2,9 @@
 
 **English** | [中文](chatgpt-desktop-adapter.zh-CN.md)
 
-> **Version:** 0.8.11 · validated on macOS (ChatGPT 26.908.70816, 26.928.31416) and
-> Windows (ChatGPT 26.930.2377.0).
+> **Version:** 0.8.12 · validated on macOS (ChatGPT 26.908.70816, 26.928.31416) and
+> Windows (ChatGPT 26.930.2377.0; the native folder dialog was validated on the
+> contributor's Windows machine).
 >
 > **Scope:** how this plugin realizes the Collaborative Notes
 > [Core Contract](core-contract.md) on the ChatGPT desktop app's **Codex** mode
@@ -29,7 +30,7 @@
 
   None of them has a local thread, hooks or plugin tools.
 - **Platforms:** macOS and Windows. One code base; Windows-specific behaviour
-  is limited to process launch, executable lookup and the panel deeplink
+  includes native first-use folder selection, process launch, executable lookup and the panel deeplink
   (§10).
 
 ## 2. Components
@@ -53,9 +54,22 @@ The bundled `codex` is used for app-server access.
 - **Project:** the thread's `cwd`. A one-time setup per project binds a notes
   root, by default `<project>/notes` (Decision 64). A missing configured root
   is reported, never recreated.
+- **Windows first-use custom location:** the standard folder dialog returns a
+  candidate; the panel asks for confirmation. If initialization, loading,
+  selection or timeout fails, the existing in-panel picker is offered with
+  Windows drive buttons and drive/UNC breadcrumbs. Both paths use the original
+  setup checks and storage range. Accessible local, mapped and network folders
+  are subject to the original permissions; network access is not guaranteed.
+  Folder creation in the system dialog is immediate and cancellation does not
+  remove it. macOS keeps its existing picker. There is no post-setup location
+  change or migration. The native helper uses Windows PowerShell 5.1 / .NET
+  Framework, respects execution policy, owns its dialog window and applies
+  per-monitor DPI. Windows 10 version 1703 or later is required for the native
+  UI. When native support is unavailable, the panel picker remains available.
+  Both choices use the original setup after explicit confirmation.
 - **Lane display names** are one setting per install (plugin data
-  `config.json`), shared by all projects; the setup step says so. Notes are
-  stored by lane key, so renaming changes display only.
+  `config.json`), shared by all projects; setup says so. Notes use lane keys,
+  so renaming changes display only.
 - **Layout:** `<root>/<lane>/<threadId>.md` for the lanes `conversation_todo`,
   `deferred_work`, `knowledge_candidate` and `lesson_candidate`.
 - **Format:** `dsh-note v1` blocks, as in the DSH release, with a
@@ -181,7 +195,11 @@ The bundled `codex` is used for app-server access.
   - auto-opened on startup and resume;
   - hidden or shown with the side-panel toggle;
   - reopened by the next message if no Notes page has checked in for 5
-    minutes;
+    minutes. If that check itself fails, macOS opens the panel and Windows
+    skips this reopening (to avoid a duplicate tab);
+  - on Windows, opening (automatic, `notes-open-panel` and fork) goes through
+    one coordinator that reuses the page's existing address, so the host
+    focuses or reopens the same tab;
   - opened on request (`notes-open-panel`).
 - **Panel access:** a per-thread HMAC token, exchanged for a persistent
   `HttpOnly`, `SameSite=Strict` cookie, so a tab restored after a restart
@@ -217,6 +235,10 @@ The plugin reads only these:
   assets, its manifest);
 - during setup, when you browse for a notes location: the folder listing
   of the folders you open, and a new folder you ask it to create;
+- on Windows native setup, Windows Shell locations the user navigates in the
+  standard dialog; selected-directory metadata and its resolved volume type;
+  the helper's launching process identity and handle, only for lifecycle cleanup;
+  screen work areas and cursor position, only to place its own dialog;
 - Codex thread data through the bundled `codex app-server`, read-only;
 - the first line of newly created Codex session files, for fork detection;
 - `~/.codex/config.toml`, for the interface language;
@@ -229,7 +251,10 @@ The plugin reads only these:
 It writes only:
 - the notes root;
 - its plugin data directory;
-- during setup, a new folder you ask it to create.
+- during setup, a new folder you ask it to create;
+- on Windows, a private temporary folder for compiling the folder-dialog
+  helper, removed after each use (left in place and logged once if removal
+  fails).
 
 It sends nothing off the machine. The service listens on `127.0.0.1` only.
 

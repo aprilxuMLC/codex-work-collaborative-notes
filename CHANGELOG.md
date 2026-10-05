@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.8.12 — Windows folder dialog
+
+Contributed by a Windows collaborator, finished and merged by the maintainers.
+
+- **Windows:** choosing another notes location opens the standard Windows
+  folder dialog. It only proposes a folder; you still confirm in the panel,
+  and the same setup checks apply. If the dialog cannot start, is busy,
+  times out or fails, the in-panel picker opens instead, now with drive
+  buttons and correct Windows breadcrumbs, so you can switch drives.
+- **Windows:** opening Notes reuses the conversation's existing tab, and a
+  lost close notification no longer stops Notes from reopening. A panel you
+  hid with the side-panel toggle stays hidden, as on macOS.
+- **Both platforms:** the Notes service recovers when its old process id has
+  been reused by another program (it used to refuse to start).
+- **macOS:** the location browser gains an "up one level" button and shows
+  loading and error states. Nothing else changes on macOS.
+
 ## 0.8.11
 
 - Setup now says that lane names apply to all your projects: renaming a lane

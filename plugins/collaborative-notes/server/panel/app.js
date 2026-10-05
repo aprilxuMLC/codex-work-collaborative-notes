@@ -15,6 +15,8 @@
 
   const threadMatch = location.pathname.match(/^\/t\/([^/]+)/);
   const threadId = threadMatch ? decodeURIComponent(threadMatch[1]) : "";
+  let panelInstance = document.documentElement?.dataset?.cnPanel || null;
+  let panelActivation = 0, panelActive = true, panelRenewal = null;
   let locale = "en";
   let context = null;
   let lanes = [];
@@ -35,7 +37,16 @@
   let searchResults = null;
   let helpOpen = false;
   let picker = null;
+  let pickerSequence = 0;
+  let pickerBusy = false;
+  let nativeFallback = false;
+  let nativeCandidate = null;
+  let nativeBusy = false;
+  let nativeSequence = 0;
+  let nativeAbort = null;
+  let nativeRenderKey = null;
   let setupBusy = false;
+  let setupUncertain = false;
   let setupContinuation = false;
   let status = null;
   let conflict = null;
@@ -89,13 +100,17 @@
   }
 
   async function api(suffix, options = {}) {
-    const headers = { ...(options.headers || {}) };
+    const headers = { ...(options.headers || {}), ...(panelInstance ? { "x-cn-panel-instance": panelInstance } : {}) };
     const init = { ...options, headers };
     if (Object.prototype.hasOwnProperty.call(options, "body") && typeof options.body !== "string") {
       init.body = JSON.stringify(options.body);
       init.headers = { ...headers, "content-type": "application/json" };
     }
-    return parseResponse(await fetch(apiPath(suffix), init));
+    const sentInstance = panelInstance;
+    const response = await fetch(apiPath(suffix), init);
+    if (sentInstance && panelActive && sentInstance === panelInstance && response.headers?.get?.("x-cn-panel-refresh") === "1")
+      renewPanelInstance().catch(() => {});
+    return parseResponse(response);
   }
 
   async function globalApi(pathname, options = {}) {
@@ -1155,6 +1170,11 @@
 
   function renderSetup() {
     const gate = nodes["setup-gate"];
+    if (context?.nativeFolderPicker) {
+      const key = JSON.stringify([context.projectPath,context.setup?.state,context.setup?.legacy,context.setup?.proposedPath,locale,namingNeeded,nativeCandidate,nativeBusy,nativeFallback,pickerBusy,picker?.path,picker?.parent,picker?.loading,picker?.drives,picker?.drivesError,(picker?.entries || []).map((entry) => entry.path),setupBusy,setupUncertain,setupContinuation]);
+      if (key === nativeRenderKey) return;
+      nativeRenderKey = key;
+    }
     gate.replaceChildren();
     const uninitialized = context?.setup?.state === "UNINITIALIZED";
     gate.hidden = !uninitialized;
@@ -1172,6 +1192,7 @@
       input.type = "text";
       input.maxLength = 200;
       input.value = setupLabels[key] || "";
+      if (context.nativeFolderPicker) input.disabled = nativeBusy || setupBusy || setupUncertain;
       input.addEventListener("input", () => { setupLabels[key] = input.value; });
       row.append(input);
       names.append(row);
@@ -1179,33 +1200,102 @@
     gate.append(names);
 
     const actions = makeElement("div", "setup-actions");
-    actions.append(button(context.setup.legacy ? t("setup.adopt") : t("setup.default"), "primary-button", () => completeSetup(context.setup.legacy ? "adopt" : "default")));
-    if (!context.setup.legacy) actions.append(button(t("setup.other"), "text-button", openPicker));
+    const defaultButton = button(context.setup.legacy ? t("setup.adopt") : t("setup.default"), "primary-button", () => completeSetup(context.setup.legacy ? "adopt" : "default"));
+    if (context.nativeFolderPicker) defaultButton.disabled = nativeBusy || setupBusy || setupUncertain;
+    actions.append(defaultButton);
+    if (!context.setup.legacy) {
+      const other = button(context.nativeFolderPicker && nativeCandidate ? t("setup.nativeAgain") : t("setup.other"), "text-button", openPicker);
+      if (context.nativeFolderPicker) other.disabled = nativeBusy || setupBusy || setupUncertain;
+      actions.append(other);
+    }
     gate.append(actions);
+    if (context.nativeFolderPicker && !context.setup.legacy) {
+      if (nativeBusy) gate.append(makeElement("p", "hint", t("setup.nativeWaiting")));
+      if (nativeCandidate) {
+        gate.append(makeElement("p", "setup-path", t("setup.nativeCandidate", { path: nativeCandidate })));
+        const confirm = button(t("setup.nativeConfirm"), "primary-button", () => completeSetup("custom", nativeCandidate, { native: true }));
+        confirm.disabled = nativeBusy || setupBusy || setupUncertain;
+        gate.append(confirm);
+      }
+      if (nativeCandidate || nativeBusy) {
+        const cancel = button(t("setup.nativeCancel"), "text-button", () => {
+          nativeSequence += 1;
+          nativeAbort?.abort();
+          nativeAbort = null;
+          nativeCandidate = null;
+          nativeBusy = false;
+          nativeFallback = false;
+          pickerSequence += 1;
+          pickerBusy = false;
+          picker = null;
+          showStatus("setup.nativeCancelled");
+          renderSetup();
+        });
+        cancel.disabled = setupBusy || setupUncertain;
+        gate.append(cancel);
+      }
+    }
     if (setupContinuation) gate.append(makeElement("p", "setup-continue", t("setup.continue")));
-    if (picker) renderPicker(gate);
+    if (picker && (!context.nativeFolderPicker || nativeFallback)) renderPicker(gate);
   }
 
   function renderPicker(gate) {
     const box = makeElement("div", "picker");
-    box.append(makeElement("div", "picker-path", t("setup.current", { path: picker.path })));
+    if (nativeFallback) box.append(makeElement("p", "picker-warning", t("setup.nativeFallbackHint")));
+    box.append(makeElement("div", "picker-path", t("setup.current", { path: picker.path || "" })));
+    if (context?.nativeFolderPicker) {
+      const drives = makeElement("div", "drive-list");
+      for (const drive of picker.drives || []) {
+        const item = button(drive, "drive-button", () => browseFolder(drive));
+        item.disabled = nativeBusy || pickerBusy || setupBusy || setupUncertain;
+        drives.append(item);
+      }
+      if (picker.drivesError) drives.append(makeElement("p", "hint", t("setup.drivesUnavailable")));
+      if ((picker.drives || []).length || picker.drivesError) box.append(drives);
+    }
     const crumbs = makeElement("div", "breadcrumbs");
-    for (const crumb of picker.breadcrumbs || []) crumbs.append(button(crumb.name || t("setup.root"), "breadcrumb-button", () => browseFolder(crumb.path)));
+    for (const crumb of picker.breadcrumbs || [])
+      crumbs.append(button(crumb.name || t("setup.root"), "breadcrumb-button", () => browseFolder(crumb.path)));
     box.append(crumbs);
+    const parent = typeof picker.parent === "string" ? picker.parent : "";
+    const currentPath = String(picker.path || "");
+    const samePath = context?.nativeFolderPicker
+      ? parent.toLowerCase() === currentPath.toLowerCase()
+      : parent === currentPath;
+    if (parent && !samePath) {
+      const up = button("↑ " + t("setup.parent"), "breadcrumb-button", () => browseFolder(parent));
+      up.disabled = nativeBusy || pickerBusy || setupBusy || setupUncertain;
+      box.append(up);
+    }
     const entries = makeElement("div", "folder-list");
-    for (const entry of picker.entries || []) entries.append(button(`📁 ${entry.name}`, "folder-button", () => browseFolder(entry.path)));
-    if ((picker.entries || []).length === 0) entries.append(makeElement("div", "hint", t("label.noSubfolders")));
+    if (picker.loading) entries.append(makeElement("div", "hint", t("setup.folderLoading")));
+    else {
+      for (const entry of picker.entries || []) {
+        const item = button("📁 " + entry.name, "folder-button", () => browseFolder(entry.path));
+        item.disabled = nativeBusy || pickerBusy || setupBusy || setupUncertain;
+        entries.append(item);
+      }
+      if ((picker.entries || []).length === 0) entries.append(makeElement("div", "hint", t("label.noSubfolders")));
+    }
     box.append(entries);
     const actions = makeElement("div", "setup-actions");
-    actions.append(
-      button(t("setup.choose"), "primary-button", () => completeSetup("custom", picker.path)),
-      button(t("setup.newFolder"), "text-button", createPickerFolder),
-      button(t("setup.cancelPicker"), "text-button", () => { picker = null; renderSetup(); }),
-    );
+    const choose = button(t("setup.choose"), "primary-button", () => completeSetup("custom", picker.path));
+    choose.disabled = nativeBusy || pickerBusy || setupBusy || setupUncertain || !picker.path;
+    const newFolder = button(t("setup.newFolder"), "text-button", createPickerFolder);
+    newFolder.disabled = nativeBusy || pickerBusy || setupBusy || setupUncertain || !picker.path;
+    const cancel = button(t("setup.cancelPicker"), "text-button", () => {
+      pickerSequence += 1;
+      pickerBusy = false;
+      picker = null;
+      nativeFallback = false;
+      clearStatus();
+      renderSetup();
+    });
+    cancel.disabled = setupBusy || setupUncertain;
+    actions.append(choose, newFolder, cancel);
     box.append(actions);
     gate.append(box);
   }
-
   function renderMain() {
     nodes["notes-main"].hidden = !context || Boolean(sourceView);
     if (!context) return;
@@ -1567,16 +1657,72 @@
     }
   }
 
-  async function openPicker() {
-    if (setupBusy) return;
+  async function openNativePicker() {
+    if (nativeBusy || setupBusy || setupUncertain || context?.setup?.state !== "UNINITIALIZED" || !context?.nativeFolderPicker) return;
+    const sequence = ++nativeSequence;
+    const abort = new AbortController();nativeAbort = abort;nativeBusy = true;clearStatus();renderSetup();
     try {
-      const start = context?.projectPath || context?.setup?.proposedPath;
-      const result = await api(`/fs?path=${encodeURIComponent(start)}`);
-      picker = { path: result.path, parent: result.parent, entries: result.entries, breadcrumbs: makeBreadcrumbs(result.path) };
-      renderSetup();
+      const result = await api("/fs/native-picker", { method: "POST", body: {
+        title: t("setup.nativeTitle"), initialPath: nativeCandidate || picker?.path || context.projectPath
+      }, signal: abort.signal });
+      if (sequence !== nativeSequence || abort.signal.aborted) return;
+      if (result.status === "selected") {
+        nativeCandidate = result.path;
+        nativeFallback = false;
+        pickerSequence += 1;
+        pickerBusy = false;
+        picker = null;
+        showStatus("setup.nativeSelected", undefined, "success");
+      } else if (result.status === "cancelled") showStatus("setup.nativeCancelled");
     } catch (error) {
-      showStatus("status.folderFailed", { error: errorText(error) }, "error");
+      if (sequence !== nativeSequence || abort.signal.aborted) return;
+      if (["PICKER_BUSY", "PICKER_UNAVAILABLE", "PICKER_TIMEOUT", "PICKER_FAILED", "LOCATION_INVALID"].includes(error?.code)) {
+        nativeFallback = true;
+        const start = nativeCandidate || picker?.path || context?.projectPath || context?.setup?.proposedPath;
+        const opened = start ? await browseFolder(start) : false;
+        if (sequence !== nativeSequence || abort.signal.aborted) return;
+        if (opened) showStatus("setup.nativeFallback", { error: errorText(error) }, "warning");
+      } else showStatus("status.folderFailed", { error: errorText(error) }, "error");
+    } finally {
+      if (sequence === nativeSequence) { nativeBusy = false;nativeAbort = null;renderSetup(); }
     }
+  }
+  function closePanelInstance(id) {
+    const body = JSON.stringify({ panelId: id });
+    if (!global.navigator?.sendBeacon?.(apiPath("/panel/closed"), body))
+      fetch(apiPath("/panel/closed"), { method: "POST", body, keepalive: true }).catch(() => {});
+  }
+  function renewPanelInstance() {
+    const generation = panelActivation, previousId = panelInstance;
+    if (panelRenewal?.generation === generation) return panelRenewal.task;
+    const job = { generation, id: global.crypto.randomUUID().replace(/-/g, "") };
+    job.task = (async () => {
+      const value = await parseResponse(await fetch(apiPath("/panel/present"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ previousId, panelId: job.id }) }));
+      if (value.panelId !== job.id || value.closed === true) { closePanelInstance(job.id);return; }
+      if (!panelActive || panelActivation !== generation || panelInstance !== previousId) { closePanelInstance(value.panelId);return; }
+      panelInstance = value.panelId;
+    })().catch((error) => { closePanelInstance(job.id);throw error; }).finally(() => { if (panelRenewal === job) panelRenewal = null; });
+    panelRenewal = job;return job.task;
+  }
+  window.addEventListener("pagehide", () => {
+    nativeSequence += 1;nativeAbort?.abort();nativeAbort = null;
+    panelActive = false;panelActivation += 1;
+    if (panelInstance) closePanelInstance(panelInstance);
+    if (panelRenewal) closePanelInstance(panelRenewal.id);
+  });
+
+  window.addEventListener("pageshow", (event) => {
+    panelActive = true;panelActivation += 1;
+    if (!panelInstance) return;
+    if (event?.persisted) return renewPanelInstance().catch(() => {});
+    return api("/context").catch(() => {});
+  });
+
+  async function openPicker() {
+    if (context?.nativeFolderPicker) return openNativePicker();
+    if (setupBusy) return;
+    const start = context?.projectPath || context?.setup?.proposedPath;
+    return start ? browseFolder(start) : undefined;
   }
 
   function makeBreadcrumbs(folderPath) {
@@ -1584,22 +1730,47 @@
     const crumbs = [{ name: t("setup.root"), path: "/" }];
     let current = "";
     for (const part of parts) {
-      current += `/${part}`;
+      current += "/" + part;
       crumbs.push({ name: part, path: current });
     }
     return crumbs;
   }
 
   async function browseFolder(folderPath) {
+    if (typeof folderPath !== "string" || !folderPath || setupBusy || setupUncertain) return false;
+    const sequence = ++pickerSequence;
+    pickerBusy = true;
+    picker = { ...(picker || {}), path: folderPath, loading: true };
+    clearStatus();
+    renderSetup();
     try {
-      const result = await api(`/fs?path=${encodeURIComponent(folderPath)}`);
-      picker = { path: result.path, parent: result.parent, entries: result.entries, breadcrumbs: makeBreadcrumbs(result.path) };
-      renderSetup();
+      const result = await api("/fs?path=" + encodeURIComponent(folderPath));
+      if (sequence !== pickerSequence) return false;
+      picker = {
+        ...result,
+        breadcrumbs: Array.isArray(result.breadcrumbs) && result.breadcrumbs.length
+          ? result.breadcrumbs : makeBreadcrumbs(result.path),
+        loading: false,
+      };
+      return true;
     } catch (error) {
+      if (sequence !== pickerSequence) return false;
+      picker = {
+        ...(picker || {}), path: folderPath, parent: picker?.parent || "",
+        entries: [], breadcrumbs: picker?.breadcrumbs || [],
+        ...(Array.isArray(error?.data?.drives) ? { drives: error.data.drives } : {}),
+        ...(error?.data?.drivesError ? { drivesError: error.data.drivesError } : {}),
+        loading: false,
+      };
       showStatus("status.folderFailed", { error: errorText(error) }, "error");
+      return false;
+    } finally {
+      if (sequence === pickerSequence) {
+        pickerBusy = false;
+        renderSetup();
+      }
     }
   }
-
   async function createPickerFolder() {
     if (!picker) return;
     requestConfirm(t("setup.newFolderPrompt"), async (name) => {
@@ -1614,7 +1785,84 @@
     }, { input: true });
   }
 
-  async function completeSetup(action, customPath) {
+  // Windows needs truthful outcomes across the original naming/binding/save steps.
+  // A lost setup response is never permission to retry or save into a recovered root.
+  async function completeWindowsSetup(action, customPath, { native = false } = {}) {
+    if (setupBusy || nativeBusy || setupUncertain || context?.setup?.state !== "UNINITIALIZED") return;
+    const labels = Object.fromEntries(LANE_KEYS.map((key) => [key, String(setupLabels[key] || "").trim()]));
+    if (namingNeeded && Object.values(labels).some((value) => !value)) {
+      showStatus("setup.failed", { error: t("setup.names") }, "error");
+      return;
+    }
+    let phase = "names";
+    let namesSaved = false;
+    let boundRoot = null;
+    pickerSequence += 1;
+    pickerBusy = false;
+    setupBusy = true;
+    renderSetup();
+    try {
+      if (namingNeeded) {
+        const overrides = { ...(laneConfig.laneOverrides || {}) };
+        for (const key of LANE_KEYS) overrides[key] = { ...(overrides[key] || {}), label: labels[key] };
+        laneConfig = await globalApi("/api/lane-config", {
+          method: "PUT", body: { displayOrder: LANE_KEYS, laneOverrides: overrides },
+        });
+        namesSaved = true;
+      }
+      phase = "binding";
+      const result = await api(native ? "/setup/native" : "/setup", {
+        method: "POST", body: { action, ...(customPath ? { customPath } : {}) },
+      });
+      if (result.ok !== true || typeof result.root !== "string") throw new ApiError("INVALID_RESPONSE");
+      boundRoot = result.root;
+      context.setup = { ...context.setup, ...result, state: "INITIALIZED", root: boundRoot };
+      nativeCandidate = null;
+      nativeRenderKey = null;
+      picker = null;
+      setupContinuation = false;
+      phase = "save";
+      await loadContext({ skipLane: true });
+      if (context?.setup?.state !== "INITIALIZED" || context.setup.root !== boundRoot) {
+        showStatus("setup.boundRefreshFailed", { path: boundRoot }, "warning");
+        return;
+      }
+      if (composerDraft.trim() || quoted) {
+        const saved = await saveComposer();
+        if (!saved) showStatus("setup.draftPending", { path: boundRoot }, "warning");
+      } else showStatus("setup.done", undefined, "success");
+      await loadLane(activeLane);
+    } catch (error) {
+      if (phase === "names") {
+        showStatus("setup.namesFailed", { error: errorText(error) }, "error");
+      } else if (phase === "save") {
+        showStatus("setup.draftPending", { path: boundRoot }, "warning");
+      } else {
+        const elsewhere = error.code === "ALREADY_INITIALIZED";
+        const knownRefusal = error.status >= 400 && error.status < 500 && !elsewhere
+          || /^PICKER_/.test(error.code || "") || error.code === "SERVICE_CLOSING";
+        if (elsewhere || !knownRefusal) {
+          setupUncertain = true;
+          // This query displays the actual binding only; it cannot prove the
+          // naming/binding/save sequence succeeded and cannot trigger continuation.
+          let latest;
+          try { latest = await api("/context"); } catch { /* leave the draft and outcome unresolved */ }
+          if (latest?.setup) context = latest;
+          showStatus(elsewhere ? "setup.configuredElsewhere" : "setup.resultUnknown", {
+            path: latest?.setup?.root || t("setup.unknownRoot"),
+          }, "warning");
+        } else {
+          showStatus(namesSaved ? "setup.namesOnly" : "setup.failed", { error: errorText(error) }, "error");
+        }
+      }
+    } finally {
+      setupBusy = false;
+      renderSetup();
+      renderComposer();
+    }
+  }
+  async function completeSetup(action, customPath, options = {}) {
+    if (context?.nativeFolderPicker) return completeWindowsSetup(action, customPath, options);
     if (setupBusy) return;
     const labels = Object.fromEntries(LANE_KEYS.map((key) => [key, String(setupLabels[key] || "").trim()]));
     if (namingNeeded && Object.values(labels).some((value) => !value)) {

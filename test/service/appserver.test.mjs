@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { test } from "node:test";
+import vm from "node:vm";
 import { AppServerClient, createThreadContextResolver } from "../../plugins/collaborative-notes/server/lib/appserver.js";
 
 const fake = path.resolve("test/fake-appserver.mjs");
@@ -28,10 +29,16 @@ test("appserver uses the fake JSON-RPC child and resolves thread context", async
 
 test("the bundled codex is looked up next to the app's own Node.js, newest layout first", async () => {
   const { bundledCandidates } = await import("../../plugins/collaborative-notes/server/lib/appserver.js");
-  const list = bundledCandidates("/Users/x/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node");
+  // This is the Mac-only branch. Execute the actual function with Mac path
+  // semantics even when the test runner itself is on Windows.
+  const macCandidates = vm.runInNewContext(`(${bundledCandidates.toString()})`, {
+    path: path.posix, BUNDLED_RELATIVE: ["codex-cli/bin/codex", "codex"],
+    DEFAULT_RESOURCES: "/Applications/ChatGPT.app/Contents/Resources",
+  });
+  const list = Array.from(macCandidates("/Users/fixture/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"));
   assert.deepEqual(list.slice(0, 2), [
-    "/Users/x/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
-    "/Users/x/Applications/ChatGPT.app/Contents/Resources/codex",
+    "/Users/fixture/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
+    "/Users/fixture/Applications/ChatGPT.app/Contents/Resources/codex",
   ]);
   assert.ok(list.includes("/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex"));
 });

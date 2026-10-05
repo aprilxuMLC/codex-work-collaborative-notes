@@ -100,6 +100,18 @@ export function isOurServiceProcess(pid, options) {
   return /server[\\/]service\.mjs/.test(command);
 }
 
+/**
+ * A long-lived service lock belongs to a process running this service entrypoint.
+ * A readable but unrelated process means the old PID was reused. If process
+ * identity cannot be read, fail closed and keep the lock live.
+ */
+export function serviceLockHolderAlive(pid, options) {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return false;
+  try { process.kill(pid, 0); } catch (error) { if (error.code !== "EPERM") return false; }
+  const command = processCommandLine(pid, options);
+  if (!command) return true;
+  return /server[\\/]service\.mjs/.test(command);
+}
 async function retireUnresponsive(info) {
   if (!isOurServiceProcess(info?.pid)) return;
   try { process.kill(info.pid, "SIGTERM"); } catch { return; }

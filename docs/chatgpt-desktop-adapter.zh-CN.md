@@ -2,7 +2,7 @@
 
 [English](chatgpt-desktop-adapter.md) | **中文**
 
-> **版本：** 0.8.11 · 在 macOS（ChatGPT 26.908.70816、26.928.31416）和 Windows（ChatGPT 26.930.2377.0）上验证。
+> **版本：** 0.8.12 · 在 macOS（ChatGPT 26.908.70816、26.928.31416）和 Windows（ChatGPT 26.930.2377.0；原生文件夹窗口在贡献者的 Windows 电脑上验证）上验证。
 >
 > **范围：** 本插件如何在 ChatGPT 桌面版的 **Codex** 模式，以及**在用户电脑上运行的 Work** 对话上实现 Collaborative Notes [Core Contract](core-contract.md)。这是本版本的宿主描述（host profile）；产品语义以 Core Contract、[Agent 指南](agent-guide.zh-CN.md) 和[概念](concept.zh-CN.md)为准。观察到的宿主事实见 [Codex](codex/capability-map.md) 和 [Work](work/capability-map.md) 能力图（英文）。
 
@@ -11,7 +11,7 @@
 - **Codex 对话：** 每个对话是一个 Codex thread，有稳定的 thread id、项目文件夹（`cwd`），以及可以通过 `codex app-server` 读取的条目历史。
 - **“在你电脑上运行”的 Work 对话：** 同样是 Codex thread，只是 thread 的 `originator` 是 `codex_work_desktop`（Codex 对话是 `Codex Desktop`）。同一套代码同时支持两者。
 - **不在范围内：** 云端 Work 对话、从普通 Chat 分支出来的 Work 对话、普通 Chat、网页版、手机版——它们都没有本地 thread、hooks 或插件工具。
-- **平台：** macOS 和 Windows。同一套代码；Windows 特有的部分只限于进程启动、可执行文件查找和面板 deeplink（§10）。
+- **平台：** macOS 和 Windows。同一套代码；Windows 特有的部分包括首次原生目录选择、进程启动、可执行文件查找和面板 deeplink（§10）。
 
 ## 2. 组成部分
 
@@ -29,7 +29,8 @@
 
 - **Holder（所属对话）：** Codex thread id，机械绑定：来自 hook 的 session id、MCP 调用的 `_meta.threadId`、面板 URL 路径。Agent 从不提供 holder。
 - **项目：** thread 的 `cwd`。每个项目一次性设置，绑定一个便签根目录（默认 `<项目>/notes`；Decision 64）。配置的根目录缺失时如实报告，绝不重新创建。
-- **分道显示名称：** 每个安装一份设置（插件数据里的 `config.json`），所有项目共用，设置步骤会提示这一点。便签按分道的 key 保存，所以改名只改变显示。
+- **Windows首次自定义位置：** 系统窗口只返回候选路径，面板再次确认后使用原版 setup。原生初始化、加载、选择或超时失败时，启用现有面板选择器并提供盘符按钮和 Windows 盘符/UNC 导航。原生和备用都使用原版 setup 的目录、权限、受管便签、符号链接和已有绑定检查，遵循同一存储范围；网络位置仍受当前用户权限和可用性限制。系统窗口内新建的文件夹在取消选择后仍保留。Mac 保留原面板选择器；不支持配置后更换位置或迁移。原生助手使用 Windows PowerShell 5.1 和现有 .NET Framework，遵守执行策略，仅管理自有对话框并为自身启用逐屏 DPI；要求 Windows 10 1703 或更新版本。原生不可用时使用备用面板，两种选择都需用户确认。
+- **分道显示名称：** 每个安装一份设置（插件数据里的 `config.json`），所有项目共用，设置步骤会提示这一点。便签按分道 key 保存，改名只改变显示。
 - **布局：** `<根目录>/<分道>/<threadId>.md`，分道为 `conversation_todo`、`deferred_work`、`knowledge_candidate`、`lesson_candidate`。
 - **格式：** `dsh-note v1` 块，与 DSH 版本相同，加一行 `dsh-meta host: codex`。
 - **插件数据：** `~/.codex/plugins/data/<插件>-<市场>/`：绑定、分道配置、每个对话的勾选和偏好、服务记录与密钥、分支检测记录。便签内容只保存在便签根目录，唯一的例外是：附到某条消息上的便签文字（包括其中引用的原文）会随该轮的记录保存，使该轮在 24 小时内重试时得到相同内容；这些副本 24 小时后从磁盘清除，删除便签本身时不会立即清除。卸载插件不会删除这个目录，需要时可以手动删除。
@@ -75,7 +76,7 @@
 
 ## 10. 生命周期与容错
 
-- **面板入口：** 启动和恢复时自动打开；用侧栏开关收起或显示；如果 5 分钟内没有便签页面签到，下一条消息会重新打开；也可按需打开（`notes-open-panel`）。
+- **面板入口：** 启动和恢复时自动打开；用侧栏开关收起或显示；如果 5 分钟内没有便签页面签到，下一条消息会重新打开——如果这项检查本身失败，macOS 会打开面板，Windows 则跳过这次重新打开（避免重复标签）；也可按需打开（`notes-open-panel`）。Windows 上，自动打开、按需打开和分支打开都经过同一个协调器，复用页面已有的地址，让宿主聚焦或重新打开同一个标签。
 - **面板访问：** 每个对话一个 HMAC token，换成持久的 `HttpOnly`、`SameSite=Strict` cookie，所以重启后恢复的标签页仍然可用。
 - **升级：** 升级删除旧安装后，旧服务会在同一端口和数据目录上启动最新的安装；子进程从用户主目录启动，因为 `codex app-server` 在已删除的工作目录里无法运行。服务版本变化时，打开的页面会自动重新载入。
 - **运行时查找：**
@@ -86,9 +87,9 @@
 
 ## 11. 数据访问声明
 
-只读取：项目的便签根目录；插件自己的数据目录和安装文件（面板资源、manifest）；在设置时浏览便签位置时，你打开的文件夹的列表，以及你要求新建的文件夹；通过自带 `codex app-server` 只读地读取 Codex 对话数据；新建 Codex 会话文件的第一行（用于检测分支）；`~/.codex/config.toml`（界面语言）；对话记录的第一行（区分桌面会话和 CLI 会话）；Windows 上还读取 `%LOCALAPPDATA%\OpenAI\Codex` 下的文件列表（找到 ChatGPT 的 Node 和 `codex.exe`），以及只在旧服务没有响应时，读取该进程的命令行，确认它是本插件的服务。
+只读取：项目的便签根目录；插件自己的数据目录和安装文件（面板资源、manifest）；在设置时浏览便签位置时，你打开的文件夹的列表，以及你要求新建的文件夹；Windows 原生选择时，Windows Shell 还枚举你在系统窗口导航到的位置，读取候选目录及其实际卷类型，并仅为异常清理核对助手启动者的进程身份与句柄；通过自带 `codex app-server` 只读地读取 Codex 对话数据；新建 Codex 会话文件的第一行（用于检测分支）；`~/.codex/config.toml`（界面语言）；对话记录的第一行（区分桌面会话和 CLI 会话）；Windows 上还读取 `%LOCALAPPDATA%\OpenAI\Codex` 下的文件列表（找到 ChatGPT 的 Node 和 `codex.exe`），以及只在旧服务没有响应时，读取该进程的命令行，确认它是本插件的服务。
 
-只写入：便签根目录、插件数据目录，以及设置时你要求新建的文件夹。
+只写入：便签根目录、插件数据目录，以及设置时你要求新建的文件夹；Windows 上为编译文件夹窗口辅助程序使用一个私有临时文件夹，每次用完即删除（删除失败时保留并记录一次）。
 
 不向本机以外发送任何数据；服务只监听 `127.0.0.1`。
 

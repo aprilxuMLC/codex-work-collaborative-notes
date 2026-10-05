@@ -64,10 +64,10 @@ test("MCP tools use injected holder context and the Phase 1 writer", async () =>
   } finally { await fs.rm(base, { recursive: true, force: true }); }
 });
 
-test("hooks record both supported events and open only startup/resume", async () => {
+test("Mac hooks record both supported events and open only startup/resume", async () => {
   const calls = [];
   const common = {
-    env: { PLUGIN_DATA: "/tmp/collaborative-notes-hook-test", CN_OPENER: "echo" },
+    platform: "darwin", env: { PLUGIN_DATA: "/tmp/collaborative-notes-hook-test", CN_OPENER: "echo" },
     ensure: async () => ({ port: 4321, instanceId: "instance", dataDir: "/tmp/collaborative-notes-hook-test" }),
     secretReader: async () => "a".repeat(64),
     request: async (_info, route, options) => { calls.push({ route, options }); return { status: 200 }; },
@@ -93,7 +93,7 @@ test("hooks record both supported events and open only startup/resume", async ()
   assert.equal(calls.filter((call) => call.route === "/internal/hook-seen").length, 3);
 });
 
-test("a message reopens a closed panel, but not one that checked in recently", async () => {
+test("Mac message reopens a closed panel, but not one that checked in recently", async () => {
   const fsp = await import("node:fs/promises");
   const os = await import("node:os");
   const pathMod = await import("node:path");
@@ -104,7 +104,7 @@ test("a message reopens a closed panel, but not one that checked in recently", a
     for (const recent of [false, true]) {
       const calls = [];
       await runHook({ hook_event_name: "UserPromptSubmit", session_id: threadId, turn_id: "turn-1", transcript_path: desktop }, {
-        env: { PLUGIN_DATA: dir },
+        platform: "darwin", env: { PLUGIN_DATA: dir },
         ensure: async () => ({ port: 4321, dataDir: dir }),
         secretReader: async () => "a".repeat(64),
         request: async (_info, route) => {
@@ -115,6 +115,22 @@ test("a message reopens a closed panel, but not one that checked in recently", a
         },
         open: async (url) => { calls.push({ open: url }); return true; },
       });
+
+test('Mac automatic opening still opens when the page check-in query fails', async () => {
+  const calls=[];
+  await runHook({hook_event_name:'UserPromptSubmit',session_id:threadId,turn_id:'turn-mac-check-failure',transcript_path:'/fixture/desktop.jsonl'}, {
+    platform:'darwin',env:{CN_ASSUME_DESKTOP:'1',PLUGIN_DATA:'/fixture'},
+    ensure:async()=>({port:4321,dataDir:'/fixture'}),secretReader:async()=>'a'.repeat(64),
+    request:async(_info,route)=>{
+      calls.push(route);
+      if(route.startsWith('/internal/panel-seen'))throw new Error('check-in unavailable');
+      if(route==='/internal/reference/consume')return {status:200,value:{ok:true,selected:false}};
+      return {status:200,value:{}};
+    },
+    open:async()=>{calls.push('direct-open');return true;},
+  });
+  assert.ok(calls.includes('direct-open'));
+});
       const seenRoute = calls.find((call) => typeof call === "string" && call.startsWith("/internal/panel-seen"));
       assert.match(seenRoute, /withinMs=300000/);
       assert.equal(calls.some((call) => call.open), !recent);
@@ -147,7 +163,12 @@ test("the MCP launcher prefers ChatGPT's bundled Node on every platform", async 
   const unix = await readFile(new URL("server/launch-mcp", root), "utf8");
   assert.ok(unix.startsWith("#!/bin/sh"));
   assert.ok(unix.indexOf("cua_node") < unix.indexOf("command -v node"), "bundled Node before PATH");
-  assert.ok(((await stat(new URL("server/launch-mcp", root))).mode & 0o111) !== 0, "executable");
+  if (process.platform === "win32") {
+    const { execFileSync } = await import("node:child_process");
+    const trackedMode = execFileSync("git", ["ls-files", "--stage", "plugins/collaborative-notes/server/launch-mcp"], { encoding: "utf8" });
+    assert.match(trackedMode, /^100755 /, "Mac launcher remains tracked executable");
+    assert.match(await readFile(new URL("server/launch-mcp.cmd", root), "utf8"), /node-run\.cmd/);
+  } else assert.ok(((await stat(new URL("server/launch-mcp", root))).mode & 0o111) !== 0, "executable");
   const runner = await readFile(new URL("server/node-run.cmd", root), "utf8");
   assert.match(runner, /CODEX_MCP_NODE_PATH/);
   assert.match(runner, /OpenAI\\Codex\\runtimes/);
@@ -170,7 +191,67 @@ test("hooks keep the Mac command and run Windows through cmd-compatible launcher
 
 test("the hook derives its plugin id from the install path, so dev and public data stay apart", async () => {
   const { pluginIdFromInstall } = await import("../../plugins/collaborative-notes/server/hook.mjs");
-  assert.equal(pluginIdFromInstall("/Users/x/.codex/plugins/cache/collaborative-notes/collaborative-notes/0.7.0/server/hook.mjs"), "collaborative-notes@collaborative-notes");
-  assert.equal(pluginIdFromInstall("/Users/x/.codex/plugins/cache/collaborative-notes-dev/collaborative-notes/0.7.0/server/hook.mjs"), "collaborative-notes@collaborative-notes-dev");
-  assert.equal(pluginIdFromInstall("/repo/plugins/collaborative-notes/server/hook.mjs"), "collaborative-notes@collaborative-notes");
+  assert.equal(pluginIdFromInstall(path.join(path.parse(process.cwd()).root, "fixture", ".codex", "plugins", "cache", "collaborative-notes", "collaborative-notes", "0.7.0", "server", "hook.mjs")), "collaborative-notes@collaborative-notes");
+  assert.equal(pluginIdFromInstall(path.join(path.parse(process.cwd()).root, "fixture", ".codex", "plugins", "cache", "collaborative-notes-dev", "collaborative-notes", "0.7.0", "server", "hook.mjs")), "collaborative-notes@collaborative-notes-dev");
+  assert.equal(pluginIdFromInstall(path.join(path.parse(process.cwd()).root, "fixture", "repo", "plugins", "collaborative-notes", "server", "hook.mjs")), "collaborative-notes@collaborative-notes");
+});
+
+test('Windows automatic startup and prompt hooks respect the existing five-minute panel check-in rule', async () => {
+  const fsp = await import('node:fs/promises');
+  const os = await import('node:os');
+  const pathMod = await import('node:path');
+  const dir = await fsp.mkdtemp(pathMod.join(os.tmpdir(), 'cn-win-auto-open-'));
+  try {
+    const desktop = pathMod.join(dir, 'desktop.jsonl');
+    await fsp.writeFile(desktop, JSON.stringify({ type: 'session_meta', payload: { originator: 'Codex Desktop' } }) + '\n');
+    for (const event of ['SessionStart', 'UserPromptSubmit']) {
+      for (const recent of [true, false]) {
+        const calls = [];
+        await runHook({
+          hook_event_name: event,
+          source: event === 'SessionStart' ? 'resume' : undefined,
+          session_id: threadId,
+          turn_id: 'turn-auto-fixture',
+          transcript_path: desktop,
+        }, {
+          platform: 'win32', env: { PLUGIN_DATA: dir },
+          ensure: async () => ({ port: 4321, dataDir: dir }),
+          secretReader: async () => 'a'.repeat(64),
+          request: async (_info, route, options) => {
+            calls.push({ route, options });
+            if (route === '/internal/reference/consume') return { status: 200, value: { ok: true, selected: false } };
+            if (route.startsWith('/internal/panel-seen')) return { status: 200, value: { recent } };
+            if (route === '/internal/panel/open') return { status: 200, value: { opened: true } };
+            return { status: 200, value: {} };
+          },
+          open: async () => { calls.push({ route: 'direct-open' }); return true; },
+        });
+        const seen = calls.find((call) => typeof call.route === 'string' && call.route.startsWith('/internal/panel-seen'));
+        assert.ok(seen, `${event} checks Windows presence`);
+        assert.match(seen.route, /withinMs=300000/, `${event} uses five minutes`);
+        const launched = calls.some((call) => call.route === '/internal/panel/open' || call.route === 'direct-open');
+        assert.equal(launched, !recent, `${event} opens only when the page is stale`);
+        if (event === 'UserPromptSubmit') assert.ok(calls.findIndex((call) => call.route === '/internal/reference/consume') < calls.indexOf(seen));
+      }
+    }
+  } finally { await fsp.rm(dir, { recursive: true, force: true }); }
+});
+
+test('Windows check-in query failure skips automatic open without delaying the user message', async () => {
+  const calls = [];
+  await runHook({ hook_event_name: 'UserPromptSubmit', session_id: threadId, turn_id: 'turn-fail-open', transcript_path: '/fixture/desktop.jsonl' }, {
+    platform: 'win32', env: { PLUGIN_DATA: '/fixture', CN_ASSUME_DESKTOP: '1' },
+    ensure: async () => ({ port: 4321, dataDir: '/fixture' }),
+    secretReader: async () => 'a'.repeat(64),
+    request: async (_info, route) => {
+      calls.push(route);
+      if (route.startsWith('/internal/panel-seen')) throw new Error('offline');
+      if (route === '/internal/reference/consume') return { status: 200, value: { ok: true, selected: false } };
+      return { status: 200, value: { opened: true } };
+    },
+    open: async () => true,
+  });
+  assert.ok(calls.includes('/internal/reference/consume'));
+  assert.ok(calls.some((route) => route.startsWith('/internal/panel-seen')));
+  assert.ok(!calls.includes('/internal/panel/open'));
 });

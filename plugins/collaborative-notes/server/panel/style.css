@@ -83,6 +83,9 @@ textarea { resize: vertical; line-height: 1.4; }
 .picker { margin-top: 10px; padding-top: 9px; border-top: 1px solid color-mix(in srgb, CanvasText 15%, transparent); }
 .picker-path { overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
 .breadcrumbs { display: flex; flex-wrap: wrap; gap: 2px; margin: 5px 0; }
+.drive-list { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.drive-button { padding: 4px 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #2563eb; }
+.picker-warning { margin: 5px 0; padding: 6px 8px; border-left: 3px solid #d97706; background: color-mix(in srgb, #f59e0b 10%, Canvas); }
 .breadcrumb-button { padding: 3px 5px; font-size: 11px; color: #2563eb; }
 .folder-list { display: grid; gap: 2px; max-height: 190px; overflow: auto; margin: 5px 0; }
 .folder-button { text-align: left; color: #2563eb; }

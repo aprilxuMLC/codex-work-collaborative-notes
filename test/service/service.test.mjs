@@ -7,7 +7,7 @@ import { afterEach, test } from "node:test";
 
 import { setup } from "../../plugins/collaborative-notes/server/lib/binding.js";
 import { acquireLock, releaseLock } from "../../plugins/collaborative-notes/server/lib/lane-store.js";
-import { panelToken } from "../../plugins/collaborative-notes/server/lib/service-client.js";
+import { panelToken, serviceLockHolderAlive } from "../../plugins/collaborative-notes/server/lib/service-client.js";
 import { PanelService } from "../../plugins/collaborative-notes/server/service.mjs";
 
 const threadId = "thread-abcdefgh";
@@ -73,6 +73,63 @@ test("service enforces origin/token and exposes context and placeholder panel", 
   assert.match(await response.text(), /Collaborative Notes panel — Phase 2b/);
 });
 
+test("service lock liveness distinguishes reused PIDs and fails closed when identity is unreadable", () => {
+  const pid = process.pid;
+  const command = (value) => () => value;
+  assert.equal(serviceLockHolderAlive(pid, { platform: "win32", exec: command('node.exe "C:\\plugin\\server\\service.mjs"') }), true);
+  assert.equal(serviceLockHolderAlive(pid, { platform: "win32", exec: command('cmd.exe /d /c unrelated') }), false);
+  assert.equal(serviceLockHolderAlive(pid, { platform: "win32", exec: command("") }), true);
+  assert.equal(serviceLockHolderAlive(-1, { platform: "win32", exec: command("unrelated") }), false);
+});
+
+test("native picker initialization retries after a failed load", async () => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), "cn-service-native-init-"));
+  temporary.push(base);
+  let attempts = 0;
+  const picker = { close: async () => {} };
+  const service = new PanelService({
+    dataDir: path.join(base, "data"),
+    secret: "c".repeat(64),
+    platform: "win32",
+    nativePickerFactory: async () => {
+      attempts += 1;
+      if (attempts === 1) throw Object.assign(new Error("compile failed"), { code: "PICKER_UNAVAILABLE" });
+      return picker;
+    },
+  });
+  await assert.rejects(service.getNativePicker(), (error) => error.code === "PICKER_UNAVAILABLE");
+  assert.equal(service.nativePickerPromise, null);
+  assert.equal(await service.getNativePicker(), picker);
+  assert.equal(attempts, 2);
+  await service.close();
+});
+
+test("service starts when a stale service lock PID has been reused by an unrelated live process", async () => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), "cn-service-reused-pid-"));
+  temporary.push(base);
+  const dataDir = path.join(base, "data");
+  await fs.mkdir(dataDir);
+  const lockPath = path.join(dataDir, "service.lock");
+  await fs.writeFile(lockPath, `${process.pid}\n${Date.now() - 60_000}\n`);
+  const service = new PanelService({
+    dataDir,
+    secret: "b".repeat(64),
+    env: { ...process.env, CN_FORK_WATCH: "0" },
+    idleMs: 60_000,
+    lockOptions: { isHolderAlive: (pid) => pid !== process.pid },
+  });
+  let info;
+  try {
+    info = await service.start();
+    const response = await fetch(`http://127.0.0.1:${info.port}/health`);
+    const health = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(health.instanceId, info.instanceId);
+    assert.equal(await fs.stat(lockPath).then(() => true, () => false), true);
+  } finally {
+    await service.close();
+  }
+});
 test("service refuses a second instance without removing the first lock", async () => {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), "cn-service-lock-"));
   temporary.push(base);
@@ -82,7 +139,7 @@ test("service refuses a second instance without removing the first lock", async 
   const first = await acquireLock(lockPath);
   const service = new PanelService({
     dataDir, secret: "a".repeat(64), threadContext: async () => ({ projectPath: base }),
-    lockOptions: { waitMs: 10, retryMs: 1 },
+    lockOptions: { waitMs: 10, retryMs: 1, isHolderAlive: () => true },
   });
   try {
     await assert.rejects(service.start(), (error) => error.code === "LOCKED");
