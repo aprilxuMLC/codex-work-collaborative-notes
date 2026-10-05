@@ -22,7 +22,9 @@ test("real HTTP selection returns only a candidate; explicit native confirmation
  assert.equal(await fs.access(path.join(f.data,"bindings.json")).then(()=>true,()=>false),false);
  const configured=await f.post("/setup/native",{action:"custom",customPath:f.target});assert.equal(configured.status,200);assert.equal((await configured.json()).root,await fs.realpath(f.target));
  assert.deepEqual(f.counts(),{created:1,selected:1});
- const second=await f.post("/fs/native-picker",{title:"Notes"});assert.equal(second.status,409);assert.equal((await second.json()).code,"ALREADY_INITIALIZED");assert.equal(f.counts().selected,1);
+ // After setup the dialog may run again for "Change location"; it only proposes a candidate and never rebinds.
+ const second=await f.post("/fs/native-picker",{title:"Notes"});assert.equal(second.status,200);assert.equal(f.counts().selected,2);
+ const again=await f.post("/setup/native",{action:"custom",customPath:f.target});assert.equal(again.status,409);assert.equal((await again.json()).code,"ALREADY_INITIALIZED");
  }finally{await f.close();}
 });
 test("Windows folder listing includes injected drive roots and breadcrumbs",{skip:process.platform!=="win32"},async()=>{

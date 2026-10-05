@@ -160,6 +160,8 @@ textarea { resize: vertical; line-height: 1.4; }
 .empty-state { padding: 18px 8px; text-align: center; color: GrayText; }
 .search-group-heading { margin: 7px 2px 0; color: GrayText; }
 .footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, CanvasText 15%, transparent); color: GrayText; font-size: 10px; overflow-wrap: anywhere; }
+.footer-location { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 6px; }
+.footer-location .text-button { padding: 0; color: inherit; font-size: inherit; }
 
 @media (max-width: 380px) {
   .app { padding: 7px; }
@@ -178,4 +180,7 @@ textarea { resize: vertical; line-height: 1.4; }
 .selection-row.missing { color: #b42318; }
 
 .note-source-preview { margin-left: 6px; color: GrayText; }
+.setup-gate.location-mode { padding: 8px 10px; }
+.location-current { margin: 4px 0; overflow-wrap: anywhere; font-size: 11px; }
+.location-running { margin: 5px 0; color: GrayText; font-size: 11px; }
 .setup-global { margin: 4px 0; padding: 5px 8px; border-left: 3px solid #d97706; background: color-mix(in srgb, #f59e0b 12%, Canvas); font-weight: 600; }

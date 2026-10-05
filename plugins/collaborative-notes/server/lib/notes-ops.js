@@ -14,6 +14,7 @@ import {
 import { ensureRootForWrite, resolveRoot } from "./binding.js";
 import { readLane, writeLane } from "./lane-store.js";
 import { isLaneKey } from "./lanes.js";
+import { withProjectWrite } from "./project-write.js";
 
 const failure = (code, extra = {}) => ({ ok: false, code, ...extra });
 
@@ -112,7 +113,7 @@ async function appendItem(ctx, lane, item, { overwrite = false } = {}) {
   return failure("STALE");
 }
 
-export async function createNote(ctx, lane, { content, overwrite = false } = {}) {
+async function createNoteUnlocked(ctx, lane, { content, overwrite = false } = {}) {
   if (typeof content !== "string" || content.trim().length === 0) return failure("EMPTY_CONTENT");
   if (!validContext(ctx)) return failure("INVALID_CONTEXT");
   try {
@@ -126,7 +127,7 @@ export async function createNote(ctx, lane, { content, overwrite = false } = {})
   } catch { return failure("INVALID_ARGUMENT"); }
 }
 
-export async function createSourcedNote(ctx, lane, {
+async function createSourcedNoteUnlocked(ctx, lane, {
   snapshot,
   source,
   comment = "",
@@ -163,7 +164,7 @@ async function loadForMutation(ctx, lane, expectedVersion) {
   return loaded;
 }
 
-export async function editNote(ctx, lane, itemKey, content, expectedVersion, { overwrite = false } = {}) {
+async function editNoteUnlocked(ctx, lane, itemKey, content, expectedVersion, { overwrite = false } = {}) {
   if (typeof content !== "string") return failure("INVALID_CONTENT");
   if (!validContext(ctx)) return failure("INVALID_CONTEXT");
   const attempts = overwrite ? 3 : 1;
@@ -200,7 +201,7 @@ function tidyDeleted(parsed, deletedIndex) {
   return { nodes: remaining, trailingNewline: parsed.trailingNewline };
 }
 
-export async function deleteNote(ctx, lane, itemKey, expectedVersion) {
+async function deleteNoteUnlocked(ctx, lane, itemKey, expectedVersion) {
   if (!validContext(ctx)) return failure("INVALID_CONTEXT");
   const loaded = await loadForMutation(ctx, lane, expectedVersion);
   if (loaded.ok === false) return loaded;
@@ -212,4 +213,32 @@ export async function deleteNote(ctx, lane, itemKey, expectedVersion) {
   const body = serializeLaneBody(tidyDeleted(parsed, index));
   const written = await writeLane(loaded.root, lane, ctx.holder, body, { expectedVersion });
   return written.ok ? { ok: true, version: written.version } : written;
+}
+
+export async function createNote(ctx, ...args) {
+  const platform = ctx?.platform ?? process.platform;
+  if (platform !== "win32") return createNoteUnlocked(ctx, ...args);
+  if (!validContext(ctx)) return failure("INVALID_CONTEXT");
+  return withProjectWrite(ctx.dataDir, ctx.projectPath, () => createNoteUnlocked(ctx, ...args), { platform });
+}
+
+export async function createSourcedNote(ctx, ...args) {
+  const platform = ctx?.platform ?? process.platform;
+  if (platform !== "win32") return createSourcedNoteUnlocked(ctx, ...args);
+  if (!validContext(ctx)) return failure("INVALID_CONTEXT");
+  return withProjectWrite(ctx.dataDir, ctx.projectPath, () => createSourcedNoteUnlocked(ctx, ...args), { platform });
+}
+
+export async function editNote(ctx, ...args) {
+  const platform = ctx?.platform ?? process.platform;
+  if (platform !== "win32") return editNoteUnlocked(ctx, ...args);
+  if (!validContext(ctx)) return failure("INVALID_CONTEXT");
+  return withProjectWrite(ctx.dataDir, ctx.projectPath, () => editNoteUnlocked(ctx, ...args), { platform });
+}
+
+export async function deleteNote(ctx, ...args) {
+  const platform = ctx?.platform ?? process.platform;
+  if (platform !== "win32") return deleteNoteUnlocked(ctx, ...args);
+  if (!validContext(ctx)) return failure("INVALID_CONTEXT");
+  return withProjectWrite(ctx.dataDir, ctx.projectPath, () => deleteNoteUnlocked(ctx, ...args), { platform });
 }

@@ -18,7 +18,7 @@ transient workspace** beside the current conversation. It helps you and the
 agent decide what should keep occupying attention now, what can safely be set
 aside, and how to bring it back accurately when it matters again.
 
-**Release 0.8.12** is validated on macOS (ChatGPT 26.928.31416) and on
+**Release 0.8.13** is validated on macOS (ChatGPT 26.928.31416) and on
 Windows (ChatGPT 26.930.2377.0). It works in Codex conversations and in Work
 conversations that run on your computer.
 
@@ -363,6 +363,14 @@ that run on your computer.
 - **Ticked notes:** if they cannot be attached, that message is held back
   and the ticks stay. A Notes outage otherwise never blocks your
   conversation.
+- **Changing the notes location later:** use **Change location** beside the
+  path at the bottom of the panel (it also appears when the location can no
+  longer be found).
+  - **macOS:** the project is pointed at another folder; your notes are not
+    moved. To take them along, move the whole notes folder yourself first,
+    then choose it.
+  - **Windows:** choose an empty folder; your notes are copied there and
+    checked before the switch. The old folder is kept.
 - **After updating the plugin**, restart ChatGPT. Conversations that were
   already open keep the previous version's agent tools until then.
 - **Editing lane files directly** in the Files tab, an editor or a shell

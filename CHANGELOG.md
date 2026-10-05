@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.13 — Change location
+
+- **Change location** after setup, beside the path at the bottom of the
+  panel; it also appears when the bound location can no longer be found.
+- **macOS:** the project is pointed at another folder; notes are not moved.
+  The folder may already hold notes (for example the notes folder you moved
+  there yourself); a folder one level too high is detected.
+- **Windows:** choose an empty folder; all notes are copied there and
+  verified before the switch, and the old folder is kept. If anything fails,
+  the old location stays in use. Based on a Windows collaborator's
+  contribution, finished by the maintainers after independent reviews.
+
 ## 0.8.12 — Windows folder dialog
 
 Contributed by a Windows collaborator, finished and merged by the maintainers.

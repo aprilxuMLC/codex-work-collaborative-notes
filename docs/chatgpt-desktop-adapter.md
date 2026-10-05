@@ -2,7 +2,7 @@
 
 **English** | [中文](chatgpt-desktop-adapter.zh-CN.md)
 
-> **Version:** 0.8.12 · validated on macOS (ChatGPT 26.908.70816, 26.928.31416) and
+> **Version:** 0.8.13 · validated on macOS (ChatGPT 26.908.70816, 26.928.31416) and
 > Windows (ChatGPT 26.930.2377.0; the native folder dialog was validated on the
 > contributor's Windows machine).
 >
@@ -54,6 +54,20 @@ The bundled `codex` is used for app-server access.
 - **Project:** the thread's `cwd`. A one-time setup per project binds a notes
   root, by default `<project>/notes` (Decision 64). A missing configured root
   is reported, never recreated.
+- **Changing the location after setup** ("Change location" beside the bound
+  path; also offered when the bound root is unavailable). **This differs by
+  host platform:**
+  - **macOS:** the project is re-pointed to another folder; notes are not
+    copied or moved. The folder may already hold notes (for example a notes
+    folder the user moved there); a folder one level too high is detected.
+  - **Windows:** the user picks an empty folder; the service copies all
+    managed notes there, verifies them, and only then switches the binding.
+    The old copy is kept, never deleted; on any failure the old binding
+    stays. Note writes, carry and the move share a project-wide lock, so no
+    write lands in the old copy after the switch. Lane folder names are
+    matched case-insensitively and an ambiguous layout refuses the move. When
+    the bound root is unavailable there is nothing to copy, and Windows offers
+    the macOS-style re-pointing instead.
 - **Windows first-use custom location:** the standard folder dialog returns a
   candidate; the panel asks for confirmation. If initialization, loading,
   selection or timeout fails, the existing in-panel picker is offered with
@@ -61,8 +75,7 @@ The bundled `codex` is used for app-server access.
   setup checks and storage range. Accessible local, mapped and network folders
   are subject to the original permissions; network access is not guaranteed.
   Folder creation in the system dialog is immediate and cancellation does not
-  remove it. macOS keeps its existing picker. There is no post-setup location
-  change or migration. The native helper uses Windows PowerShell 5.1 / .NET
+  remove it. macOS keeps its existing picker. The native helper uses Windows PowerShell 5.1 / .NET
   Framework, respects execution policy, owns its dialog window and applies
   per-monitor DPI. Windows 10 version 1703 or later is required for the native
   UI. When native support is unavailable, the panel picker remains available.

@@ -17,7 +17,9 @@ import { LANE_KEYS, isLaneKey, resolveLanes, sanitizeLaneConfig } from "./lib/la
 import { filterEligibleBody, rekeyCarriedBody, mergeCarryBodies, carryMarker } from "./lib/carry.js";
 import { renderReferenceText, resolveReferenceTargets } from "./lib/reference-binding.js";
 import { createPanelLauncher } from "./hook.mjs";
-import { getSetupState } from "./lib/binding.js";
+import { getSetupState, resolveRoot } from "./lib/binding.js";
+import { withProjectWrite } from "./lib/project-write.js";
+import { changeLocation, isLocationChanging } from "./lib/location-change.js";
 import {
   createNote,
   createSourcedNote,
@@ -47,7 +49,7 @@ const PANEL_ASSETS = Object.freeze({
 });
 const MAX_REQUEST_BYTES = 1024 * 1024;
 const DEFAULT_IDLE_MS = 12 * 60 * 60 * 1000;
-const PLUGIN_VERSION = "0.8.12";
+const PLUGIN_VERSION = "0.8.13";
 const MAX_REFERENCE_CHARS = 8000;
 const REFERENCE_COPY_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -235,7 +237,8 @@ function sendPanelReopen(response, locale = "en") {
 function errorStatus(code) {
   if (["FORBIDDEN", "ORIGIN_FORBIDDEN", "TOKEN_INVALID"].includes(code)) return 403;
   if (["THREAD_UNAVAILABLE", "CONFIGURED_ROOT_UNAVAILABLE"].includes(code)) return 404;
-  if (["STALE", "SETUP_REQUIRED", "ALREADY_INITIALIZED", "LEGACY_ADOPTION_REQUIRED", "NOTES_SOURCE_UNVERIFIED", "CARRY_CONFLICT", "CARRY_STALE", "CARRY_ALREADY_DECIDED", "CARRY_PARTIAL", "CARRY_LOCKED"].includes(code)) return 409;
+  if (["STALE", "SETUP_REQUIRED", "ALREADY_INITIALIZED", "LEGACY_ADOPTION_REQUIRED", "NOTES_ONE_LEVEL_DOWN", "NOTES_SOURCE_UNVERIFIED", "CARRY_CONFLICT", "CARRY_STALE", "CARRY_ALREADY_DECIDED", "CARRY_PARTIAL", "CARRY_LOCKED", "LOCATION_BUSY", "LOCATION_CHANGED", "LOCATION_UNCHANGED", "LOCATION_OVERLAP", "TARGET_NOT_EMPTY", "SOURCE_CHANGED", "TARGET_CHANGED", "COPY_VERIFY_FAILED", "AMBIGUOUS_NOTE_LAYOUT", "LOCATION_REBIND_UNAVAILABLE"].includes(code)) return 409;
+  if (["COPY_FAILED"].includes(code)) return 500;
   if (["NOTES_SOURCE_CONSENT_REQUIRED"].includes(code)) return 403;
   if (["NOTES_SOURCE_UNAVAILABLE"].includes(code)) return 404;
   if (["NOT_FOUND"].includes(code)) return 404;
@@ -565,7 +568,7 @@ export class PanelService {
 
   async ctx(threadId) {
     const context = await this.context(threadId);
-    return context.ok === false ? context : { dataDir: this.dataDir, holder: threadId, projectPath: context.projectPath };
+    return context.ok === false ? context : { dataDir: this.dataDir, holder: threadId, projectPath: context.projectPath, platform: this.nativePlatform };
   }
 
   async notedItemIds(threadId, context) {
@@ -1204,9 +1207,16 @@ export class PanelService {
         const keys = url.pathname === nativePickerPath ? ["initialPath", "title"] : ["action", "customPath"];
         if (Object.keys(body).some(key => !keys.includes(key))) throw Object.assign(new Error("INVALID_ARGUMENT"), { code: "INVALID_ARGUMENT" });
         const current = await getSetupState(this.dataDir, context.projectPath);
-        if (current.state === "INITIALIZED") throw Object.assign(new Error("ALREADY_INITIALIZED"), { code: "ALREADY_INITIALIZED" });
-        if (current.state !== "UNINITIALIZED") throw Object.assign(new Error(current.code || "LOCATION_INVALID"), { code: current.code || "LOCATION_INVALID" });
-        if (current.legacy) throw Object.assign(new Error("LEGACY_ADOPTION_REQUIRED"), { code: "LEGACY_ADOPTION_REQUIRED" });
+        if (url.pathname === nativeSetupPath) {
+          if (current.state === "INITIALIZED") throw Object.assign(new Error("ALREADY_INITIALIZED"), { code: "ALREADY_INITIALIZED" });
+          if (current.state !== "UNINITIALIZED") throw Object.assign(new Error(current.code || "LOCATION_INVALID"), { code: current.code || "LOCATION_INVALID" });
+          if (current.legacy) throw Object.assign(new Error("LEGACY_ADOPTION_REQUIRED"), { code: "LEGACY_ADOPTION_REQUIRED" });
+        } else if (current.state !== "INITIALIZED" && current.state !== "UNINITIALIZED") {
+          throw Object.assign(new Error(current.code || "LOCATION_INVALID"), { code: current.code || "LOCATION_INVALID" });
+        }
+        if (current.state === "UNINITIALIZED" && current.legacy) {
+          throw Object.assign(new Error("LEGACY_ADOPTION_REQUIRED"), { code: "LEGACY_ADOPTION_REQUIRED" });
+        }
         if (abort.signal.aborted || this.nativeClosing) throw Object.assign(new Error("SERVICE_CLOSING"), { code: "SERVICE_CLOSING" });
         if (url.pathname === nativePickerPath) {
           const native = await this.getNativePicker();
@@ -1215,7 +1225,7 @@ export class PanelService {
         } else {
           if (body.action !== "custom") throw Object.assign(new Error("BAD_ACTION"), { code: "BAD_ACTION" });
           const { setup } = await import("./lib/binding.js");
-          const result = await setup(this.dataDir, context.projectPath, "custom", body.customPath);
+          const result = await setup(this.dataDir, context.projectPath, "custom", body.customPath, { platform: this.nativePlatform });
           if (!res.destroyed) return result.ok ? sendJson(res, 200, result) : sendError(res, result.code, errorStatus(result.code));
         }
       } catch (error) {
@@ -1263,7 +1273,8 @@ export class PanelService {
         return carry?.ok === false ? sendError(res, carry.code, errorStatus(carry.code)) : sendJson(res, 200, { carry });
       }
       if (req.method === "POST") {
-        try {
+        const carryAction = async () => {
+          try {
           const body = await bodyJson(req);
           const choice = body.choice;
           if (!["all", "some", "none"].includes(choice)) return sendError(res, "INVALID_CHOICE");
@@ -1381,23 +1392,37 @@ export class PanelService {
           const marker = carryMarker(plan.parentThreadId, markerLanes, "decided", { choice, selectedLanes: selected });
           await writeJsonAtomic(path.join(setup.root, ".carry-over", `${apiThread}.json`), marker);
           return sendJson(res, 200, { ok: true, outcomes, marker });
-        } catch (error) { return sendError(res, error.code || "CARRY_FAILED", errorStatus(error.code)); }
+          } catch (error) { return sendError(res, error.code || "CARRY_FAILED", errorStatus(error.code)); }
+        };
+        const guarded = this.nativePlatform === "win32"
+          ? await withProjectWrite(this.dataDir, context.projectPath, carryAction, { platform: this.nativePlatform })
+          : await carryAction();
+        return guarded?.ok === false ? sendError(res, guarded.code, errorStatus(guarded.code)) : guarded;
       }
       return sendError(res, "METHOD_NOT_ALLOWED", 405);
     }
 
     if (url.pathname === `/api/t/${encodeURIComponent(apiThread)}/context` && req.method === "GET") {
       const setupState = await import("./lib/binding.js").then(({ getSetupState }) => getSetupState(this.dataDir, context.projectPath));
+      const resolvedSetup = this.nativePlatform === "win32" && setupState.state === "INITIALIZED"
+        ? await resolveRoot(this.dataDir, context.projectPath)
+        : null;
+      const contextSetup = resolvedSetup?.ok === false && resolvedSetup.code === "CONFIGURED_ROOT_UNAVAILABLE"
+        ? { ...setupState, code: resolvedSetup.code }
+        : setupState;
       const config = await readJson(path.join(this.dataDir, "config.json"), { displayOrder: [], laneOverrides: {} });
       const locale = this.locale || await detectLocale({ acceptLanguage: req.headers["accept-language"] });
-      const carry = setupState.state === "INITIALIZED" ? await this.carryStatus(apiThread, context) : null;
+      const carry = contextSetup.state === "INITIALIZED" ? await this.carryStatus(apiThread, context) : null;
       return sendJson(res, 200, {
         serviceVersion: PLUGIN_VERSION,
         ...(this.nativePlatform === "win32" ? { nativeFolderPicker: true } : {}),
         title: context.title || null,
         projectPath: context.projectPath,
         locale,
-        setup: setupState,
+        setup: contextSetup,
+        ...(this.nativePlatform === "win32" ? {
+          locationChange: { active: await isLocationChanging(this.dataDir, context.projectPath, { platform: this.nativePlatform }) },
+        } : {}),
         lanes: resolveLanes(config, locale),
         hooks: { trusted: await hooksTrusted(this.dataDir) },
         carry,
@@ -1455,7 +1480,7 @@ export class PanelService {
       const lane = url.searchParams.get("lane");
       const itemKey = url.searchParams.get("itemKey");
       if (!isLaneKey(lane) || !isValidItemKey(itemKey)) return sendError(res, "NOTES_SOURCE_UNAVAILABLE", 404);
-      const ctx = { dataDir: this.dataDir, projectPath: context.projectPath, holder: apiThread };
+      const ctx = { dataDir: this.dataDir, projectPath: context.projectPath, holder: apiThread, platform: this.nativePlatform };
       try {
         const notes = await readNotes(ctx, lane);
         const note = notes.notes?.find((entry) => entry.addressable && entry.itemKey === itemKey);
@@ -1493,9 +1518,46 @@ export class PanelService {
       try {
         const { setup } = await import("./lib/binding.js");
         const body = await bodyJson(req);
-        const result = await setup(this.dataDir, context.projectPath, body.action, body.customPath);
+        const result = await setup(this.dataDir, context.projectPath, body.action, body.customPath, { platform: this.nativePlatform });
         return result.ok ? sendJson(res, 200, result) : sendError(res, result.code, errorStatus(result.code));
       } catch (error) { return sendError(res, error.code || "SETUP_FAILED", errorStatus(error.code)); }
+    }
+
+    if (url.pathname === `/api/t/${encodeURIComponent(apiThread)}/location` && req.method === "POST") {
+      try {
+        const body = await bodyJson(req);
+        const allowedKeys = this.nativePlatform === "win32"
+          ? ["action", "customPath", "acceptEmpty", "expectedRoot"]
+          : ["action", "customPath", "acceptEmpty"];
+        if (!body || typeof body !== "object" || Array.isArray(body)
+          || Object.keys(body).some((key) => !allowedKeys.includes(key))
+          || (Object.hasOwn(body, "acceptEmpty") && typeof body.acceptEmpty !== "boolean")) {
+          return sendError(res, "INVALID_ARGUMENT");
+        }
+        const { relocate } = await import("./lib/binding.js");
+        const result = await relocate(this.dataDir, context.projectPath, body.action, body.customPath, {
+          acceptEmpty: body.acceptEmpty === true,
+          ...(this.nativePlatform === "win32" ? { expectedRoot: body.expectedRoot, platform: this.nativePlatform } : {}),
+        });
+        if (result.ok) return sendJson(res, 200, result);
+        if (result.code === "NOTES_ONE_LEVEL_DOWN") return sendJson(res, 409, result);
+        return sendError(res, result.code, errorStatus(result.code));
+      } catch (error) { return sendError(res, error.code || "LOCATION_FAILED", errorStatus(error.code)); }
+    }
+
+    if (url.pathname === `/api/t/${encodeURIComponent(apiThread)}/location/move`) {
+      if (this.nativePlatform !== "win32") return sendError(res, "NOT_FOUND", 404);
+      if (req.method !== "POST") return sendError(res, "METHOD_NOT_ALLOWED", 405);
+      try {
+        const body = await bodyJson(req);
+        if (!body || typeof body !== "object" || Array.isArray(body)
+          || Object.keys(body).some((key) => !["expectedRoot", "targetPath"].includes(key))
+          || typeof body.expectedRoot !== "string" || typeof body.targetPath !== "string") {
+          return sendError(res, "INVALID_ARGUMENT", 400);
+        }
+        const result = await changeLocation(this.dataDir, context.projectPath, body, { platform: this.nativePlatform });
+        return sendJson(res, result.ok ? 200 : errorStatus(result.code), result);
+      } catch (error) { return sendError(res, error.code || "LOCATION_INVALID", errorStatus(error.code || "LOCATION_INVALID")); }
     }
 
     if (url.pathname === `/api/t/${encodeURIComponent(apiThread)}/fs` && req.method === "GET") {
@@ -1517,7 +1579,7 @@ export class PanelService {
     if (laneMatch) {
       const lane = decodeURIComponent(laneMatch[1]);
       if (!isLaneKey(lane)) return sendError(res, "INVALID_LANE");
-      const ctx = { dataDir: this.dataDir, projectPath: context.projectPath, holder: apiThread };
+      const ctx = { dataDir: this.dataDir, projectPath: context.projectPath, holder: apiThread, platform: this.nativePlatform };
       try {
         if (laneMatch[2] === undefined && req.method === "GET") {
           const result = await readNotes(ctx, lane);
@@ -1548,7 +1610,7 @@ export class PanelService {
       const lane = decodeURIComponent(sourcedLaneMatch[1]);
       if (!isLaneKey(lane)) return sendError(res, "INVALID_LANE");
       if (req.method !== "POST") return sendError(res, "METHOD_NOT_ALLOWED", 405);
-      const ctx = { dataDir: this.dataDir, projectPath: context.projectPath, holder: apiThread };
+      const ctx = { dataDir: this.dataDir, projectPath: context.projectPath, holder: apiThread, platform: this.nativePlatform };
       try {
         const body = await bodyJson(req);
         const verified = await verifySourceCapture(this.appserver, apiThread, body.snapshot, body.source);

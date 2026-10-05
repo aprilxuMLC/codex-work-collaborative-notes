@@ -3,23 +3,13 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { LANE_KEYS } from "./lanes.js";
 import { acquireLock, releaseLock, renameWithRetry } from "./lane-store.js";
+import { pathKey, pathsOverlap, projectRealPath, withProjectWrite } from "./project-write.js";
 
 const STATE_VERSION = 1;
 const STATE_FILE = "bindings.json";
 
 const failure = (code, extra = {}) => ({ ok: false, code, ...extra });
 const isMissing = (error) => error?.code === "ENOENT";
-
-async function projectRealPath(projectPath) {
-  if (typeof projectPath !== "string" || !path.isAbsolute(projectPath)) return null;
-  try {
-    const stat = await fs.lstat(projectPath);
-    if (stat.isSymbolicLink() || !stat.isDirectory()) return null;
-    return await fs.realpath(projectPath);
-  } catch {
-    return null;
-  }
-}
 
 async function checkedDataDir(dataDir) {
   if (typeof dataDir !== "string" || !path.isAbsolute(dataDir)) return failure("DATA_DIR_INVALID");
@@ -98,7 +88,7 @@ async function legacyForProject(projectRoot) {
   return hasLaneData(path.join(projectRoot, "notes"));
 }
 
-async function validateExistingDirectory(directory) {
+export async function validateExistingDirectory(directory) {
   try {
     const stat = await fs.lstat(directory);
     if (stat.isSymbolicLink() || !stat.isDirectory()) return false;
@@ -107,7 +97,7 @@ async function validateExistingDirectory(directory) {
   } catch { return false; }
 }
 
-async function writableProbe(directory) {
+export async function writableProbe(directory) {
   const probe = path.join(directory, `.codex-notes-probe-${process.pid}-${randomBytes(8).toString("hex")}`);
   let handle;
   try {
@@ -123,24 +113,27 @@ async function writableProbe(directory) {
   }
 }
 
-async function updateBinding(dataDir, projectKey, binding, { rejectExisting = false } = {}) {
+export async function withBindingState(dataDir, action, { platform = process.platform } = {}) {
   const checked = await checkedDataDir(dataDir);
   if (!checked.ok) return checked;
   const lockPath = path.join(checked.dataDir, `${STATE_FILE}.lock`);
-  const locked = await acquireLock(lockPath);
+  const locked = await acquireLock(lockPath, platform === "win32" ? { staleOnlyIfHolderDead: true } : undefined);
   if (!locked.ok) return locked;
   try {
     const current = await readState(checked.dataDir);
     if (!current.ok) return current;
-    if (rejectExisting && current.state.bindings[projectKey]) return failure("ALREADY_INITIALIZED");
-    const next = {
+    return await action(current.state, (next) => writeState(checked.dataDir, next));
+  } finally { await releaseLock(lockPath, locked.handle); }
+}
+
+async function updateBinding(dataDir, projectKey, binding, { rejectExisting = false, platform = process.platform } = {}) {
+  return withBindingState(dataDir, async (state, persist) => {
+    if (rejectExisting && state.bindings[projectKey]) return failure("ALREADY_INITIALIZED");
+    return persist({
       version: STATE_VERSION,
-      bindings: { ...current.state.bindings, [projectKey]: binding },
-    };
-    return await writeState(checked.dataDir, next);
-  } finally {
-    await releaseLock(lockPath, locked.handle);
-  }
+      bindings: { ...state.bindings, [projectKey]: binding },
+    });
+  }, { platform });
 }
 
 export async function getSetupState(dataDir, projectPath) {
@@ -156,7 +149,50 @@ export async function getSetupState(dataDir, projectPath) {
   return { state: "UNINITIALIZED", proposedPath: path.join(project, "notes"), legacy: legacy === true };
 }
 
-export async function setup(dataDir, projectPath, action, customPath) {
+async function setupWindows(dataDir, projectPath, action, customPath, { platform = "win32" } = {}) {
+  return withProjectWrite(dataDir, projectPath, async (project) => {
+  if (!project) return failure("PROJECT_INVALID");
+  return withBindingState(dataDir, async (state, persist) => {
+  if (state.bindings[project]) return failure("ALREADY_INITIALIZED");
+
+  const defaultRoot = path.join(project, "notes");
+  const legacy = await legacyForProject(project);
+  if (legacy === null) return failure("LOCATION_INVALID");
+  if (legacy && action !== "adopt") return failure("LEGACY_ADOPTION_REQUIRED");
+  if (action !== "default" && action !== "custom" && action !== "adopt") return failure("BAD_ACTION");
+  if (action === "adopt" && !legacy) return failure("BAD_ACTION");
+
+  let root;
+  let pendingDefault = false;
+  if (action === "adopt" || action === "default") {
+    root = defaultRoot;
+    let stat;
+    try { stat = await fs.lstat(root); } catch (error) {
+      if (!isMissing(error)) return failure("LOCATION_INVALID");
+    }
+    if (stat?.isSymbolicLink() || (stat && !stat.isDirectory())) return failure("LOCATION_INVALID");
+    pendingDefault = !stat;
+    if (stat && !(await validateExistingDirectory(root))) return failure("LOCATION_INVALID");
+  } else {
+    if (typeof customPath !== "string" || !path.isAbsolute(customPath)
+      || !(await validateExistingDirectory(customPath))) return failure("LOCATION_INVALID");
+    root = await fs.realpath(customPath);
+    if ((await hasLaneData(root)) === true && root !== defaultRoot) return failure("LOCATION_OCCUPIED");
+  }
+  if (!pendingDefault && !(await writableProbe(root))) return failure("LOCATION_UNUSABLE");
+
+  if (platform === "win32" && Object.entries(state.bindings).some(([other, value]) => (
+    other !== project && typeof value?.path === "string" && pathsOverlap(root, value.path, platform)
+  ))) return failure("LOCATION_OCCUPIED");
+  const binding = { path: root, confirmedAt: pendingDefault ? null : new Date().toISOString() };
+  const written = await persist({ ...state, bindings: { ...state.bindings, [project]: binding } });
+  if (!written.ok) return written;
+  return { ok: true, root, state: "INITIALIZED" };
+  }, { platform });
+  }, { platform });
+}
+
+async function setupDefault(dataDir, projectPath, action, customPath) {
   const project = await projectRealPath(projectPath);
   if (!project) return failure("PROJECT_INVALID");
   const state = await readState(dataDir);
@@ -193,6 +229,128 @@ export async function setup(dataDir, projectPath, action, customPath) {
   const written = await updateBinding(dataDir, project, binding, { rejectExisting: true });
   if (!written.ok) return written;
   return { ok: true, root, state: "INITIALIZED" };
+}
+
+export async function setup(dataDir, projectPath, action, customPath, { platform = process.platform } = {}) {
+  return platform === "win32"
+    ? setupWindows(dataDir, projectPath, action, customPath, { platform })
+    : setupDefault(dataDir, projectPath, action, customPath);
+}
+
+async function relocateDefault(dataDir, projectPath, action, customPath, { acceptEmpty = false } = {}) {
+  const project = await projectRealPath(projectPath);
+  if (!project) return failure("PROJECT_INVALID");
+  const state = await readState(dataDir);
+  if (!state.ok) return state;
+  const current = state.state.bindings[project];
+  if (!current || typeof current.path !== "string") return failure("SETUP_REQUIRED");
+  if (action !== "default" && action !== "custom") return failure("BAD_ACTION");
+
+  let root;
+  let pendingDefault = false;
+  if (action === "default") {
+    root = path.join(project, "notes");
+    let stat;
+    try { stat = await fs.lstat(root); } catch (error) {
+      if (!isMissing(error)) return failure("LOCATION_INVALID");
+    }
+    if (stat?.isSymbolicLink() || (stat && !stat.isDirectory())) return failure("LOCATION_INVALID");
+    pendingDefault = !stat;
+    if (stat && !(await validateExistingDirectory(root))) return failure("LOCATION_INVALID");
+  } else {
+    if (typeof customPath !== "string" || !path.isAbsolute(customPath)
+      || !(await validateExistingDirectory(customPath))) return failure("LOCATION_INVALID");
+    root = await fs.realpath(customPath);
+    const rootHasNotes = await hasLaneData(root);
+    if (rootHasNotes === null) return failure("LOCATION_INVALID");
+    if (!rootHasNotes && !acceptEmpty) {
+      const nested = path.join(root, "notes");
+      if (await hasLaneData(nested) === true) return failure("NOTES_ONE_LEVEL_DOWN", { nested });
+    }
+  }
+  if (!pendingDefault && !(await writableProbe(root))) return failure("LOCATION_UNUSABLE");
+  if (root === current.path) return { ok: true, root, state: "INITIALIZED", changed: false };
+
+  const binding = { path: root, confirmedAt: pendingDefault ? null : new Date().toISOString() };
+  const written = await updateBinding(dataDir, project, binding);
+  if (!written.ok) return written;
+  return { ok: true, root, state: "INITIALIZED", changed: true };
+}
+
+async function currentRootAvailable(root, platform) {
+  try {
+    const stat = await fs.lstat(root);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) return false;
+    const real = await fs.realpath(root);
+    return pathKey(real, platform) === pathKey(path.resolve(root), platform);
+  } catch { return false; }
+}
+
+async function relocateWindows(dataDir, projectPath, action, customPath, {
+  acceptEmpty = false,
+  expectedRoot,
+} = {}) {
+  if (typeof expectedRoot !== "string" || !path.isAbsolute(expectedRoot)) return failure("INVALID_ARGUMENT");
+  return withProjectWrite(dataDir, projectPath, async (project) => withBindingState(dataDir, async (state, persist) => {
+    const current = state.bindings[project];
+    if (!current || typeof current.path !== "string") return failure("SETUP_REQUIRED");
+    if (pathKey(current.path, "win32") !== pathKey(path.resolve(expectedRoot), "win32")) {
+      return failure("LOCATION_CHANGED", { root: current.path });
+    }
+    if (await currentRootAvailable(current.path, "win32")) return failure("LOCATION_REBIND_UNAVAILABLE", { root: current.path });
+    if (action !== "default" && action !== "custom") return failure("BAD_ACTION");
+
+    let root;
+    let pendingDefault = false;
+    if (action === "default") {
+      root = path.join(project, "notes");
+      let stat;
+      try { stat = await fs.lstat(root); } catch (error) {
+        if (!isMissing(error)) return failure("LOCATION_INVALID");
+      }
+      if (stat?.isSymbolicLink() || (stat && !stat.isDirectory())) return failure("LOCATION_INVALID");
+      pendingDefault = !stat;
+      if (stat && !(await validateExistingDirectory(root))) return failure("LOCATION_INVALID");
+    } else {
+      if (typeof customPath !== "string" || !path.isAbsolute(customPath)
+        || !(await validateExistingDirectory(customPath))) return failure("LOCATION_INVALID");
+      root = await fs.realpath(customPath);
+      const rootHasNotes = await hasLaneData(root);
+      if (rootHasNotes === null) return failure("LOCATION_INVALID");
+      if (!rootHasNotes && !acceptEmpty) {
+        const nested = path.join(root, "notes");
+        if (await hasLaneData(nested) === true) return failure("NOTES_ONE_LEVEL_DOWN", { nested });
+      }
+    }
+    if (!pendingDefault && !(await writableProbe(root))) return failure("LOCATION_UNUSABLE");
+    if (pathKey(root, "win32") === pathKey(current.path, "win32")) {
+      return { ok: true, root, state: "INITIALIZED", changed: false };
+    }
+    for (const [otherProject, otherBinding] of Object.entries(state.bindings)) {
+      if (otherProject === project) continue;
+      if (typeof otherBinding?.path !== "string" || !path.isAbsolute(otherBinding.path)) {
+        return failure("STATE_INVALID", { root: current.path });
+      }
+      if (pathsOverlap(root, otherBinding.path, "win32")) return failure("LOCATION_OCCUPIED", { root: current.path });
+    }
+    const binding = { path: root, confirmedAt: pendingDefault ? null : new Date().toISOString() };
+    const written = await persist({
+      version: STATE_VERSION,
+      bindings: { ...state.bindings, [project]: binding },
+    });
+    if (!written.ok) return written;
+    return { ok: true, root, state: "INITIALIZED", changed: true };
+  }, { platform: "win32" }), { platform: "win32" });
+}
+
+export async function relocate(dataDir, projectPath, action, customPath, {
+  acceptEmpty = false,
+  expectedRoot,
+  platform = process.platform,
+} = {}) {
+  return platform === "win32"
+    ? relocateWindows(dataDir, projectPath, action, customPath, { acceptEmpty, expectedRoot })
+    : relocateDefault(dataDir, projectPath, action, customPath, { acceptEmpty });
 }
 
 export async function resolveRoot(dataDir, projectPath) {

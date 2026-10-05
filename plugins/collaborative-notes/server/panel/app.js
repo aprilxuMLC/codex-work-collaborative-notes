@@ -48,6 +48,14 @@
   let setupBusy = false;
   let setupUncertain = false;
   let setupContinuation = false;
+  let locationChangeMode = false;
+  let locationTarget = null;
+  let locationChangeBusy = false;
+  let locationPendingResult = null;
+  let relocating = false;
+  let relocationBusy = false;
+  let relocationNested = null;
+  let relocationAttempt = null;
   let status = null;
   let conflict = null;
   let loadSequence = 0;
@@ -128,6 +136,24 @@
     return t(`error.${code}`) === `error.${code}` ? t("error.default") : t(`error.${code}`);
   }
 
+  function locationErrorText(error) {
+    const key = `location.error.${error?.code || "default"}`;
+    return t(key) === key ? errorText(error) : t(key);
+  }
+
+  function isLocationError(error) {
+    return ["LOCATION_BUSY", "LOCATION_CHANGED", "LOCATION_UNCHANGED", "LOCATION_OVERLAP",
+      "LOCATION_OCCUPIED", "LOCATION_UNUSABLE", "LOCATION_INVALID", "TARGET_NOT_EMPTY",
+      "SOURCE_CHANGED", "TARGET_CHANGED", "COPY_VERIFY_FAILED", "COPY_FAILED",
+      "UNKNOWN_NOTE_FILE", "AMBIGUOUS_NOTE_LAYOUT", "SYMLINK_REFUSED", "CONFIGURED_ROOT_UNAVAILABLE",
+      "LOCATION_REBIND_UNAVAILABLE",
+      "STATE_WRITE_FAILED"].includes(error?.code);
+  }
+
+  function locationBusy() {
+    return Boolean(locationChangeBusy || locationPendingResult || context?.locationChange?.active);
+  }
+
   function showStatus(key, values, kind = "") {
     status = { key, text: t(key, values), kind };
     renderStatus();
@@ -171,6 +197,12 @@
   function projectName() {
     const projectPath = context?.projectPath || "";
     return projectPath.split(/[\\/]/).filter(Boolean).pop() || projectPath;
+  }
+
+  function defaultNotesPath() {
+    const projectPath = String(context?.projectPath || "");
+    const separator = projectPath.includes("\\") ? "\\" : "/";
+    return projectPath.replace(/[\\/]+$/, "") + separator + "notes";
   }
 
   function laneFor(key) {
@@ -991,6 +1023,7 @@
     nodes["quote-button"].textContent = t("label.quoteFromConversation");
     if (nodes["composer"].value !== composerDraft) nodes["composer"].value = composerDraft;
     nodes["save-note-button"].textContent = t("label.saveNote");
+    nodes["save-note-button"].disabled = locationBusy();
     renderQuotedSource();
   }
 
@@ -1158,7 +1191,237 @@
 
   function renderFooter() {
     const root = context?.setup?.root;
-    nodes["footer"].textContent = root ? t("label.boundPath", { path: root }) : t("label.notConfigured");
+    const footer = nodes["footer"];
+    footer.replaceChildren();
+    if (!root) {
+      footer.textContent = t("label.notConfigured");
+      return;
+    }
+    const row = makeElement("div", "footer-location");
+    row.append(makeElement("span", "footer-bound", t("label.boundPath", { path: root })));
+    if (context?.setup?.state === "INITIALIZED") row.append(button(t("relocate.change"), "text-button", openRelocation));
+    footer.append(row);
+  }
+
+  function openRelocation() {
+    if (relocating || context?.setup?.state !== "INITIALIZED" || setupBusy) return;
+    relocating = true;
+    locationChangeMode = Boolean(context?.nativeFolderPicker && context?.setup?.code !== "CONFIGURED_ROOT_UNAVAILABLE");
+    locationTarget = null;
+    locationChangeBusy = false;
+    locationPendingResult = null;
+    relocationNested = null;
+    relocationAttempt = null;
+    nativeCandidate = null;
+    nativeFallback = false;
+    nativeSequence += 1;
+    nativeAbort?.abort();
+    nativeAbort = null;
+    pickerSequence += 1;
+    pickerBusy = false;
+    picker = null;
+    clearStatus();
+    renderAll();
+  }
+
+  function cancelRelocation() {
+    if (relocationBusy) return;
+    locationChangeMode = false;
+    locationTarget = null;
+    locationChangeBusy = false;
+    locationPendingResult = null;
+    relocating = false;
+    relocationNested = null;
+    relocationAttempt = null;
+    nativeCandidate = null;
+    nativeFallback = false;
+    pickerSequence += 1;
+    pickerBusy = false;
+    picker = null;
+    clearStatus();
+    renderAll();
+  }
+
+  function clearLocationSelection() {
+    locationTarget = null;
+    nativeCandidate = null;
+    nativeFallback = false;
+    pickerSequence += 1;
+    pickerBusy = false;
+    picker = null;
+  }
+
+  function beginLocationChange() {
+    openRelocation();
+  }
+
+  function selectLocationTarget(targetPath) {
+    if (!locationChangeMode || locationBusy() || typeof targetPath !== "string" || !targetPath) return;
+    locationTarget = targetPath;
+    nativeCandidate = null;
+    nativeFallback = false;
+    pickerSequence += 1;
+    pickerBusy = false;
+    picker = null;
+    clearStatus();
+    renderSetup();
+  }
+
+  function cancelLocationSelection() {
+    if (locationChangeBusy || locationPendingResult) return;
+    nativeSequence += 1;
+    nativeAbort?.abort();
+    nativeAbort = null;
+    nativeBusy = false;
+    cancelRelocation();
+  }
+
+  async function showLocationCompleted(root, copiedFiles, confirmedAfterReconnect = false, confirmedStatusKey = null) {
+    locationPendingResult = null;
+    locationChangeBusy = false;
+    clearLocationSelection();
+    locationChangeMode = false;
+    relocating = false;
+    context.setup = { ...context.setup, state: "INITIALIZED", root, code: undefined };
+    context.locationChange = { active: false };
+    renderAll();
+    const loaded = await loadLane(activeLane, { poll: true });
+    if (confirmedAfterReconnect) {
+      showStatus(confirmedStatusKey || (loaded ? "location.doneAfterReconnect" : "location.doneRefreshFailed"), { path: root }, loaded ? "success" : "warning");
+    } else {
+      showStatus(loaded ? "location.done" : "location.doneRefreshFailed", { path: root, n: copiedFiles }, loaded ? "success" : "warning");
+    }
+  }
+
+  function renderMoveRelocation(gate) {
+    const currentRoot = context?.setup?.root || "";
+    const active = Boolean(locationChangeBusy || context?.locationChange?.active);
+    gate.append(makeElement("h2", "", t("relocate.title")));
+    if (active || locationPendingResult) {
+      gate.append(makeElement("p", "location-current", t("location.current", { path: currentRoot })));
+      gate.append(makeElement("p", "location-running", t(active ? "location.running" : "location.responseChecking", {
+        path: currentRoot, current: currentRoot, target: locationPendingResult?.targetPath || "",
+      })));
+      return;
+    }
+    gate.append(makeElement("p", "", t("location.explain")));
+    gate.append(makeElement("p", "setup-path", t("relocate.current", { path: currentRoot })));
+    if (locationTarget) {
+      gate.append(makeElement("p", "setup-path", t("location.target", { path: locationTarget })));
+      gate.append(makeElement("p", "hint", t("location.retainedCopy")));
+      const actions = makeElement("div", "setup-actions");
+      const confirm = button(t("location.confirm"), "primary-button", confirmLocationChange);
+      confirm.disabled = locationBusy();
+      const cancel = button(t("location.cancel"), "text-button", cancelLocationSelection);
+      cancel.disabled = locationChangeBusy || Boolean(locationPendingResult);
+      actions.append(confirm, cancel);
+      gate.append(actions);
+    } else {
+      if (nativeBusy) gate.append(makeElement("p", "hint", t("setup.nativeWaiting")));
+      if (!nativeBusy && !picker) {
+        const actions = makeElement("div", "setup-actions");
+        actions.append(button(t("location.choose"), "primary-button", openPicker), button(t("location.cancel"), "text-button", cancelLocationSelection));
+        gate.append(actions);
+      }
+      if (picker && (!context.nativeFolderPicker || nativeFallback)) renderPicker(gate);
+    }
+  }
+
+  async function confirmLocationChange() {
+    if (!locationChangeMode || !locationTarget || locationBusy() || context?.setup?.state !== "INITIALIZED") return;
+    const expectedRoot = context.setup.root;
+    const targetPath = locationTarget;
+    locationChangeBusy = true;
+    clearStatus();
+    renderSetup();
+    renderMain();
+    try {
+      const result = await api("/location/move", { method: "POST", body: { expectedRoot, targetPath } });
+      if (result?.ok !== true || typeof result.root !== "string") throw new ApiError("INVALID_RESPONSE", { status: 200 }, result);
+      await showLocationCompleted(result.root, result.copiedFiles);
+    } catch (error) {
+      const responseWasLost = !(error?.status > 0);
+      const responseWasUncertain = responseWasLost || error?.code === "INVALID_RESPONSE";
+      let latest = null;
+      if (responseWasUncertain) {
+        try { latest = await api("/context"); } catch { /* leave the binding outcome unresolved */ }
+      }
+      if (latest?.setup) context.setup = latest.setup;
+      if (latest?.locationChange) context.locationChange = latest.locationChange;
+      const currentRoot = latest?.setup?.root;
+      const active = Boolean(latest?.locationChange?.active);
+      if (responseWasUncertain && typeof currentRoot === "string" && currentRoot !== expectedRoot) {
+        await showLocationCompleted(currentRoot, undefined, true, "location.reconciled");
+      } else if (responseWasUncertain && active) {
+        locationPendingResult = { expectedRoot, targetPath };
+        locationChangeBusy = false;
+        clearLocationSelection();
+        showStatus("location.responsePending", { path: currentRoot || expectedRoot }, "warning");
+        renderSetup();
+        renderMain();
+      } else if (responseWasUncertain) {
+        locationPendingResult = { expectedRoot, targetPath };
+        locationChangeBusy = false;
+        clearLocationSelection();
+        showStatus("location.responseUnconfirmed", { current: currentRoot || expectedRoot, target: targetPath }, "warning");
+        renderSetup();
+        renderMain();
+      } else {
+        locationPendingResult = null;
+        locationChangeBusy = false;
+        clearLocationSelection();
+        showStatus(responseWasLost ? "location.responseUnconfirmed" : "location.failed", {
+          current: currentRoot || expectedRoot, target: targetPath, error: locationErrorText(error),
+          partial: error?.data?.partialPath ? t("location.partial", { path: error.data.partialPath }) : "",
+        }, responseWasLost ? "warning" : "error");
+        renderSetup();
+        renderMain();
+      }
+    } finally {
+      locationChangeBusy = false;
+      renderSetup();
+      renderMain();
+    }
+  }
+
+  function renderRelocation(gate) {
+    if (locationChangeMode) return renderMoveRelocation(gate);
+    gate.append(
+      makeElement("h2", "", t("relocate.title")),
+      makeElement("p", "", t("relocate.explanation")),
+      makeElement("p", "setup-path", t("relocate.current", { path: context?.setup?.root || "" })),
+    );
+    if (relocationNested) {
+      gate.append(makeElement("p", "banner warning", t("relocate.nested", { path: relocationNested })));
+      const nestedActions = makeElement("div", "setup-actions");
+      nestedActions.append(
+        button(t("relocate.useNested"), "primary-button", () => completeRelocation("custom", relocationNested)),
+        button(t("relocate.useFolderAnyway"), "text-button", () => completeRelocation("custom", relocationAttempt, { acceptEmpty: true })),
+        button(t("relocate.cancel"), "text-button", cancelRelocation),
+      );
+      gate.append(nestedActions);
+      return;
+    }
+    const actions = makeElement("div", "setup-actions");
+    const defaultButton = button(t("relocate.default", { path: defaultNotesPath() }), "primary-button", () => completeRelocation("default"));
+    const other = button(t("relocate.chooseOther"), "text-button", openPicker);
+    const cancel = button(t("relocate.cancel"), "text-button", cancelRelocation);
+    defaultButton.disabled = relocationBusy || nativeBusy || pickerBusy;
+    other.disabled = relocationBusy || nativeBusy || pickerBusy;
+    cancel.disabled = relocationBusy;
+    actions.append(defaultButton, other, cancel);
+    gate.append(actions);
+    if (nativeBusy) gate.append(makeElement("p", "hint", t("setup.nativeWaiting")));
+    if (nativeCandidate) {
+      gate.append(makeElement("p", "setup-path", t("setup.nativeCandidate", { path: nativeCandidate })));
+      const confirm = button(t("setup.nativeConfirm"), "primary-button", () => completeRelocation("custom", nativeCandidate, { native: true }));
+      confirm.disabled = nativeBusy || relocationBusy;
+      gate.append(confirm);
+      const cancelSelection = button(t("setup.nativeCancel"), "text-button", cancelRelocation);
+      cancelSelection.disabled = relocationBusy;
+      gate.append(cancelSelection);
+    }
+    if (picker && (!context.nativeFolderPicker || nativeFallback)) renderPicker(gate);
   }
 
   function renderSortButtons() {
@@ -1171,13 +1434,15 @@
   function renderSetup() {
     const gate = nodes["setup-gate"];
     if (context?.nativeFolderPicker) {
-      const key = JSON.stringify([context.projectPath,context.setup?.state,context.setup?.legacy,context.setup?.proposedPath,locale,namingNeeded,nativeCandidate,nativeBusy,nativeFallback,pickerBusy,picker?.path,picker?.parent,picker?.loading,picker?.drives,picker?.drivesError,(picker?.entries || []).map((entry) => entry.path),setupBusy,setupUncertain,setupContinuation]);
+      const key = JSON.stringify([context.projectPath,context.setup?.state,context.setup?.root,context.setup?.code,context.setup?.legacy,context.setup?.proposedPath,context.locationChange?.active,locale,namingNeeded,nativeCandidate,nativeBusy,nativeFallback,pickerBusy,picker?.path,picker?.parent,picker?.loading,picker?.drives,picker?.drivesError,(picker?.entries || []).map((entry) => entry.path),setupBusy,setupUncertain,setupContinuation,relocating,relocationBusy,relocationNested,relocationAttempt,locationChangeMode,locationTarget,locationChangeBusy,locationPendingResult?.targetPath]);
       if (key === nativeRenderKey) return;
       nativeRenderKey = key;
     }
     gate.replaceChildren();
     const uninitialized = context?.setup?.state === "UNINITIALIZED";
-    gate.hidden = !uninitialized;
+    const changing = relocating && context?.setup?.state === "INITIALIZED";
+    gate.hidden = !uninitialized && !changing;
+    if (changing) return renderRelocation(gate);
     if (!uninitialized) return;
     gate.append(makeElement("h2", "", t("setup.title")), makeElement("p", "", t("setup.firstUse")));
     if (context.setup.legacy) gate.append(makeElement("p", "setup-legacy", t("setup.legacy")));
@@ -1241,13 +1506,13 @@
 
   function renderPicker(gate) {
     const box = makeElement("div", "picker");
-    if (nativeFallback) box.append(makeElement("p", "picker-warning", t("setup.nativeFallbackHint")));
+    if (nativeFallback) box.append(makeElement("p", "picker-warning", t(locationChangeMode ? "location.fallbackHint" : relocating ? "relocate.nativeFallbackHint" : "setup.nativeFallbackHint")));
     box.append(makeElement("div", "picker-path", t("setup.current", { path: picker.path || "" })));
     if (context?.nativeFolderPicker) {
       const drives = makeElement("div", "drive-list");
       for (const drive of picker.drives || []) {
         const item = button(drive, "drive-button", () => browseFolder(drive));
-        item.disabled = nativeBusy || pickerBusy || setupBusy || setupUncertain;
+        item.disabled = nativeBusy || pickerBusy || setupBusy || setupUncertain || relocationBusy || locationBusy();
         drives.append(item);
       }
       if (picker.drivesError) drives.append(makeElement("p", "hint", t("setup.drivesUnavailable")));
@@ -1264,7 +1529,7 @@
       : parent === currentPath;
     if (parent && !samePath) {
       const up = button("↑ " + t("setup.parent"), "breadcrumb-button", () => browseFolder(parent));
-      up.disabled = nativeBusy || pickerBusy || setupBusy || setupUncertain;
+      up.disabled = nativeBusy || pickerBusy || setupBusy || setupUncertain || relocationBusy || locationBusy();
       box.append(up);
     }
     const entries = makeElement("div", "folder-list");
@@ -1272,18 +1537,19 @@
     else {
       for (const entry of picker.entries || []) {
         const item = button("📁 " + entry.name, "folder-button", () => browseFolder(entry.path));
-        item.disabled = nativeBusy || pickerBusy || setupBusy || setupUncertain;
+        item.disabled = nativeBusy || pickerBusy || setupBusy || setupUncertain || relocationBusy || locationBusy();
         entries.append(item);
       }
       if ((picker.entries || []).length === 0) entries.append(makeElement("div", "hint", t("label.noSubfolders")));
     }
     box.append(entries);
     const actions = makeElement("div", "setup-actions");
-    const choose = button(t("setup.choose"), "primary-button", () => completeSetup("custom", picker.path));
-    choose.disabled = nativeBusy || pickerBusy || setupBusy || setupUncertain || !picker.path;
+    const choose = button(locationChangeMode ? t("location.selectTarget") : t("setup.choose"), "primary-button", () => locationChangeMode ? selectLocationTarget(picker.path) : relocating ? completeRelocation("custom", picker.path) : completeSetup("custom", picker.path));
+    choose.disabled = nativeBusy || pickerBusy || setupBusy || setupUncertain || relocationBusy || locationBusy() || !picker.path;
     const newFolder = button(t("setup.newFolder"), "text-button", createPickerFolder);
-    newFolder.disabled = nativeBusy || pickerBusy || setupBusy || setupUncertain || !picker.path;
-    const cancel = button(t("setup.cancelPicker"), "text-button", () => {
+    newFolder.disabled = nativeBusy || pickerBusy || setupBusy || setupUncertain || relocationBusy || locationBusy() || !picker.path;
+    const cancel = button(locationChangeMode ? t("location.cancel") : t("setup.cancelPicker"), "text-button", () => {
+      if (locationChangeMode) return cancelLocationSelection();
       pickerSequence += 1;
       pickerBusy = false;
       picker = null;
@@ -1291,13 +1557,13 @@
       clearStatus();
       renderSetup();
     });
-    cancel.disabled = setupBusy || setupUncertain;
+    cancel.disabled = setupBusy || setupUncertain || relocationBusy || locationChangeBusy || Boolean(locationPendingResult);
     actions.append(choose, newFolder, cancel);
     box.append(actions);
     gate.append(box);
   }
   function renderMain() {
-    nodes["notes-main"].hidden = !context || Boolean(sourceView);
+    nodes["notes-main"].hidden = !context || Boolean(sourceView) || relocating;
     if (!context) return;
     renderLaneTabs();
     renderSearch();
@@ -1461,6 +1727,7 @@
   }
 
   async function saveComposer({ overwrite = false } = {}) {
+    if (locationBusy()) { showStatus("location.running", { path: context?.setup?.root || "" }, "warning"); return false; }
     if (context?.setup?.state !== "INITIALIZED") {
       setupContinuation = true;
       showStatus("setup.continue", undefined, "warning");
@@ -1489,7 +1756,7 @@
       clearStatus();
       if (error.code === "NOTES_SOURCE_UNVERIFIED") {
         showStatus("error.NOTES_SOURCE_UNVERIFIED", undefined, "error");
-      } else if (error.status === 409) {
+      } else if (error.status === 409 && !isLocationError(error)) {
         conflict = { laneKey: activeLane, latest: null, poll: false, operation: () => saveComposer({ overwrite: true }) };
         renderConflict();
       } else showStatus("status.saveFailed", { error: errorText(error) }, "error");
@@ -1499,6 +1766,7 @@
 
   async function saveEdit({ overwrite = false } = {}) {
     if (!editor) return false;
+    if (locationBusy()) { showStatus("location.running", { path: context?.setup?.root || "" }, "warning"); return false; }
     // A pending conflict must be resolved first (Load latest / Overwrite / Cancel).
     if (conflict) { renderConflict(); return false; }
     if (!editor.sourced && !editor.content.trim()) {
@@ -1516,7 +1784,7 @@
       await loadLane(current.laneKey);
       return true;
     } catch (error) {
-      if (error.status === 409) {
+      if (error.status === 409 && !isLocationError(error)) {
         clearStatus();
         conflict = { laneKey: current.laneKey, latest: null, poll: false, operation: () => saveEdit({ overwrite: true }) };
         renderConflict();
@@ -1526,6 +1794,7 @@
   }
 
   async function deleteNote(laneKey, itemKey) {
+    if (locationBusy()) { showStatus("location.running", { path: context?.setup?.root || "" }, "warning"); return; }
     if (!laneData.has(laneKey)) await loadLane(laneKey);
     const version = laneData.get(laneKey)?.version;
     try {
@@ -1535,7 +1804,7 @@
       showStatus("status.deleted", undefined, "success");
       await loadLane(laneKey);
     } catch (error) {
-      if (error.status === 409) {
+      if (error.status === 409 && !isLocationError(error)) {
         conflict = { laneKey, latest: null, poll: false, operation: () => deleteNote(laneKey, itemKey) };
         renderConflict();
       } else showStatus("status.saveFailed", { error: errorText(error) }, "error");
@@ -1557,6 +1826,35 @@
       if (latest?.title && context && latest.title !== context.title) {
         context.title = latest.title;
         nodes["thread-title"].textContent = latest.title;
+      }
+      if (context && latest?.setup && context.nativeFolderPicker) {
+        const previousRoot = context.setup?.root;
+        const wasLocationActive = Boolean(context.locationChange?.active);
+        const isLocationActive = Boolean(latest.locationChange?.active);
+        const nextRoot = latest.setup.root;
+        context.setup = latest.setup;
+        context.locationChange = latest.locationChange || { active: false };
+        const rootChanged = typeof previousRoot === "string" && typeof nextRoot === "string" && previousRoot !== nextRoot;
+        if (locationPendingResult && !isLocationActive) {
+          const pending = locationPendingResult;
+          locationPendingResult = null;
+          if (typeof nextRoot === "string" && nextRoot !== pending.expectedRoot) await showLocationCompleted(nextRoot, undefined, true, "location.reconciled");
+          else showStatus("location.responseUnconfirmed", { current: nextRoot || pending.expectedRoot, target: pending.targetPath }, "warning");
+        } else if (wasLocationActive && !isLocationActive && status?.key === "location.running") {
+          clearStatus();
+        }
+        if (rootChanged) {
+          if (locationChangeMode && !locationChangeBusy) {
+            clearLocationSelection();
+            showStatus("location.changedElsewhere", { current: nextRoot || t("setup.unknownRoot") }, "warning");
+          }
+          renderSetup();
+          await loadLane(activeLane, { poll: true });
+          renderMain();
+        } else if (wasLocationActive !== isLocationActive) {
+          renderSetup();
+          renderMain();
+        }
       }
       if (context && Object.prototype.hasOwnProperty.call(latest || {}, "carry")) {
         // Another Notes page may have decided this branch's carry: drop a
@@ -1658,30 +1956,38 @@
   }
 
   async function openNativePicker() {
-    if (nativeBusy || setupBusy || setupUncertain || context?.setup?.state !== "UNINITIALIZED" || !context?.nativeFolderPicker) return;
+    const canPick = context?.setup?.state === "UNINITIALIZED" || relocating;
+    if (nativeBusy || setupBusy || setupUncertain || !canPick || !context?.nativeFolderPicker || locationBusy()) return;
     const sequence = ++nativeSequence;
     const abort = new AbortController();nativeAbort = abort;nativeBusy = true;clearStatus();renderSetup();
     try {
       const result = await api("/fs/native-picker", { method: "POST", body: {
-        title: t("setup.nativeTitle"), initialPath: nativeCandidate || picker?.path || context.projectPath
+        title: t(relocating ? "relocate.nativeTitle" : "setup.nativeTitle"),
+        initialPath: locationChangeMode ? context.setup?.root : (nativeCandidate || picker?.path || (relocating ? context.setup?.root : null) || context.projectPath)
       }, signal: abort.signal });
       if (sequence !== nativeSequence || abort.signal.aborted) return;
       if (result.status === "selected") {
-        nativeCandidate = result.path;
+        if (locationChangeMode) {
+          locationTarget = result.path;
+          nativeCandidate = null;
+          showStatus("location.selected", undefined, "success");
+        } else {
+          nativeCandidate = result.path;
+          showStatus("setup.nativeSelected", undefined, "success");
+        }
         nativeFallback = false;
         pickerSequence += 1;
         pickerBusy = false;
         picker = null;
-        showStatus("setup.nativeSelected", undefined, "success");
-      } else if (result.status === "cancelled") showStatus("setup.nativeCancelled");
+      } else if (result.status === "cancelled") showStatus(locationChangeMode ? "location.cancelled" : "setup.nativeCancelled");
     } catch (error) {
       if (sequence !== nativeSequence || abort.signal.aborted) return;
       if (["PICKER_BUSY", "PICKER_UNAVAILABLE", "PICKER_TIMEOUT", "PICKER_FAILED", "LOCATION_INVALID"].includes(error?.code)) {
         nativeFallback = true;
-        const start = nativeCandidate || picker?.path || context?.projectPath || context?.setup?.proposedPath;
+        const start = locationChangeMode ? context?.setup?.root : (nativeCandidate || picker?.path || context?.projectPath || context?.setup?.proposedPath);
         const opened = start ? await browseFolder(start) : false;
         if (sequence !== nativeSequence || abort.signal.aborted) return;
-        if (opened) showStatus("setup.nativeFallback", { error: errorText(error) }, "warning");
+        if (opened) showStatus(locationChangeMode ? "location.fallbackHint" : relocating ? "relocate.nativeFallback" : "setup.nativeFallback", { error: errorText(error) }, "warning");
       } else showStatus("status.folderFailed", { error: errorText(error) }, "error");
     } finally {
       if (sequence === nativeSequence) { nativeBusy = false;nativeAbort = null;renderSetup(); }
@@ -1720,8 +2026,8 @@
 
   async function openPicker() {
     if (context?.nativeFolderPicker) return openNativePicker();
-    if (setupBusy) return;
-    const start = context?.projectPath || context?.setup?.proposedPath;
+    if (setupBusy || locationBusy()) return;
+    const start = (relocating ? context?.setup?.root : null) || context?.projectPath || context?.setup?.proposedPath;
     return start ? browseFolder(start) : undefined;
   }
 
@@ -1737,7 +2043,7 @@
   }
 
   async function browseFolder(folderPath) {
-    if (typeof folderPath !== "string" || !folderPath || setupBusy || setupUncertain) return false;
+    if (typeof folderPath !== "string" || !folderPath || setupBusy || setupUncertain || locationBusy()) return false;
     const sequence = ++pickerSequence;
     pickerBusy = true;
     picker = { ...(picker || {}), path: folderPath, loading: true };
@@ -1772,7 +2078,7 @@
     }
   }
   async function createPickerFolder() {
-    if (!picker) return;
+    if (!picker || locationBusy()) return;
     requestConfirm(t("setup.newFolderPrompt"), async (name) => {
       if (!name) return;
       try {
@@ -1861,6 +2167,50 @@
       renderComposer();
     }
   }
+
+  async function completeRelocation(action, customPath, { acceptEmpty = false } = {}) {
+    if (relocationBusy || !relocating || context?.setup?.state !== "INITIALIZED") return;
+    if (action === "custom") relocationAttempt = customPath;
+    relocationNested = null;
+    relocationBusy = true;
+    clearStatus();
+    renderSetup();
+    try {
+      const result = await api("/location", {
+        method: "POST",
+        body: {
+          action,
+          ...(customPath ? { customPath } : {}),
+          ...(acceptEmpty ? { acceptEmpty: true } : {}),
+          ...(context?.nativeFolderPicker ? { expectedRoot: context.setup.root } : {}),
+        },
+      });
+      if (result.ok !== true || typeof result.root !== "string") throw new ApiError("INVALID_RESPONSE");
+      relocating = false;
+      relocationBusy = false;
+      relocationNested = null;
+      relocationAttempt = null;
+      nativeCandidate = null;
+      nativeFallback = false;
+      picker = null;
+      await loadContext({ skipLane: true });
+      await loadLane(activeLane);
+      showStatus("status.locationChanged", undefined, "success");
+    } catch (error) {
+      relocationBusy = false;
+      if (error.code === "NOTES_ONE_LEVEL_DOWN" && typeof error.data?.nested === "string") {
+        relocationNested = error.data.nested;
+        nativeCandidate = null;
+        nativeFallback = false;
+        picker = null;
+        renderSetup();
+      } else {
+        showStatus("status.locationFailed", { error: errorText(error) }, "error");
+        renderSetup();
+      }
+    }
+  }
+
   async function completeSetup(action, customPath, options = {}) {
     if (context?.nativeFolderPicker) return completeWindowsSetup(action, customPath, options);
     if (setupBusy) return;

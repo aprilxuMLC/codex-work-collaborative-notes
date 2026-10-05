@@ -28,12 +28,12 @@ async function panel({native=true,reply,instance=null}={}) {
   vm.runInContext(await fs.readFile(new URL("../../plugins/collaborative-notes/server/panel/i18n.js",import.meta.url),"utf8"),sandbox);
   let source=await fs.readFile(new URL("../../plugins/collaborative-notes/server/panel/app.js",import.meta.url),"utf8");
   source=source.replace("loadContext().then(startPolling);",`
-    renderAll = () => renderSetup();
+    renderAll = () => { renderSetup(); renderMain(); };
     loadContext = async () => { const next=await api("/context");context=next;renderAll(); };
     loadLane = async () => null;
-    global.testPanel={openPicker,completeSetup,renderSetup,
-      get state(){return {context,nativeCandidate,nativeBusy,setupBusy,composerDraft,status,setupUncertain:typeof setupUncertain==='undefined'?false:setupUncertain};},
-      fixture(value){context=value;locale='zh';namingNeeded=true;setupLabels=Object.fromEntries(LANE_KEYS.map(key=>[key,key]));composerDraft='隔离测试草稿';composerTouched=true;renderSetup();}
+    global.testPanel={openPicker,completeSetup,renderSetup,renderFooter,beginLocationChange,confirmLocationChange,cancelLocationSelection,saveComposer,refreshTitle,
+      get state(){return {context,nativeCandidate,nativeBusy,setupBusy,composerDraft,status,locationTarget,locationChangeMode,locationChangeBusy,locationPendingResult,conflict,setupUncertain:typeof setupUncertain==='undefined'?false:setupUncertain};},
+      fixture(value){context=value;locale='zh';namingNeeded=true;setupLabels=Object.fromEntries(LANE_KEYS.map(key=>[key,key]));composerDraft='隔离测试草稿';composerTouched=true;renderAll();}
     };
   `);
   vm.runInContext(source,sandbox);
@@ -42,6 +42,7 @@ async function panel({native=true,reply,instance=null}={}) {
 }
 const configured=root=>({status:200,data:{ok:true,root,state:"INITIALIZED"}});
 const context=root=>({status:200,data:{nativeFolderPicker:true,projectPath:"C:\\project",setup:{state:"INITIALIZED",root}}});
+const findText=(node,text)=>{if(node?.textContent===text)return node;for(const child of node?.children||[]){const found=findText(child,text);if(found)return found;}return undefined;};
 
 test("panel selection changes only candidate; polling retains controls; cancellation preserves draft",async()=>{
  const p=await panel();await p.app.openPicker();assert.equal(p.calls.length,1);assert.ok(p.calls[0].url.endsWith('/fs/native-picker'));assert.equal(p.app.state.nativeCandidate,'D:\\候选目录');
@@ -78,6 +79,12 @@ test("pagehide aborts the owned picker, while focus does not cancel it",async()=
 test("Mac opens the original in-panel picker and original setup endpoint",async()=>{
  const p=await panel({native:false,reply:call=>call.url.includes('/fs?')?{status:200,data:{path:'/tmp/project',entries:[],parent:'/tmp'}}:call.url==='/api/lane-config'?{status:200,data:{}}:call.url.endsWith('/setup')?configured('/tmp/notes'):call.url.endsWith('/context')?context('/tmp/notes'):{status:200,data:{ok:true}}});
  await p.app.openPicker();assert.ok(p.calls[0].url.includes('/fs?'));await p.app.completeSetup('custom','/tmp/notes');assert.equal(p.calls.some(c=>c.url.endsWith('/setup/native')),false);assert.equal(p.calls.some(c=>c.url.endsWith('/setup')),true);
+});
+test("Mac polling does not apply Windows location-change reconciliation",async()=>{
+ const p=await panel({native:false,reply:call=>call.url.endsWith('/context')?{status:200,data:{projectPath:'/project',setup:{state:'INITIALIZED',root:'/new'}}}:{status:200,data:{}}});
+ p.app.fixture({projectPath:'/project',setup:{state:'INITIALIZED',root:'/old'}});
+ await p.app.refreshTitle();
+ assert.equal(p.app.state.context.setup.root,'/old');
 });
 test("once setup is executing, cancellation and naming controls are disabled",async()=>{
  let release;const p=await panel({reply:call=>call.url.endsWith('/fs/native-picker')?undefined:call.url==='/api/lane-config'?new Promise(r=>release=r):{status:400,data:{code:'LOCATION_INVALID'}}});
@@ -157,4 +164,120 @@ test('Windows native setup falls back to the in-panel drive picker and confirms 
  await p.app.completeSetup('custom','D:\\fixture\\测试 folder',{native:false});
  assert.equal(calls.some(call=>call.url.endsWith('/setup/native')),false);assert.equal(calls.filter(call=>call.url.endsWith('/setup')).length,1);
  assert.equal(p.app.state.context.setup.state,'INITIALIZED');
+});
+
+test('initialized footer offers Change location, including an unavailable bound root', async () => {
+ const p=await panel({native:false});
+ for(const root of ['C:\\notes','C:\\missing']){
+  p.app.fixture({projectPath:'C:\\project',setup:{state:'INITIALIZED',root}});
+  const footer=p.elements.get('footer');
+  assert.ok(findText(footer,'更改位置'));
+ }
+});
+
+test('relocation cancel leaves the current location unchanged', async () => {
+ const p=await panel({native:false});
+ p.app.fixture({projectPath:'C:\\project',setup:{state:'INITIALIZED',root:'C:\\old'}});
+ const change=findText(p.elements.get('footer'),'更改位置');
+ change.listeners.click();
+ const gate=p.elements.get('setup-gate');
+ const cancel=findText(gate,'取消');
+ assert.ok(cancel);cancel.listeners.click();
+ assert.equal(p.app.state.context.setup.root,'C:\\old');
+ assert.equal(p.calls.some(call=>call.url.endsWith('/location')),false);
+});
+
+test('relocation one-level-down response offers the nested folder and accept-empty choices', async () => {
+ const p=await panel({native:false,reply:call=>{
+  if(call.url.includes('/fs?'))return {status:200,data:{path:'/project',parent:'/',entries:[],breadcrumbs:[{name:'/',path:'/'},{name:'project',path:'/project'}]}};
+  if(call.url.endsWith('/location'))return {status:409,data:{ok:false,code:'NOTES_ONE_LEVEL_DOWN',nested:'/project/notes'}};
+ }});
+ p.app.fixture({projectPath:'/project',setup:{state:'INITIALIZED',root:'/old'}});
+ findText(p.elements.get('footer'),'更改位置').listeners.click();
+ await p.app.openPicker();
+ const choose=findText(p.elements.get('setup-gate'),'选择此文件夹');
+ assert.ok(choose);await choose.listeners.click();
+ const all=[];const visit=node=>{all.push(node);for(const child of node.children||[])visit(child);};visit(p.elements.get('setup-gate'));
+ assert.ok(all.some(el=>String(el.textContent||'').includes('里面的 notes 文件夹有')));
+ assert.ok(all.some(el=>el.textContent==='使用那个 notes 文件夹'));
+ assert.ok(all.some(el=>el.textContent==='仍然使用这个文件夹'));
+});
+
+test('Windows relocation copies through the move endpoint and confirms the new location', async () => {
+ const calls=[];
+ const p=await panel({reply:call=>{
+  calls.push(call);
+  if(call.url.endsWith('/fs/native-picker'))return {status:200,data:{ok:true,status:'selected',path:'D:\\new-notes'}};
+  if(call.url.endsWith('/location/move'))return {status:200,data:{ok:true,root:'D:\\new-notes',state:'INITIALIZED',changed:true,copiedFiles:2}};
+  if(call.url.endsWith('/context'))return {status:200,data:{nativeFolderPicker:true,projectPath:'C:\\project',setup:{state:'INITIALIZED',root:'D:\\new-notes'}}};
+  return {status:200,data:{}};
+ }});
+ p.app.fixture({nativeFolderPicker:true,projectPath:'C:\\project',setup:{state:'INITIALIZED',root:'D:\\old'}});
+ findText(p.elements.get('footer'),'更改位置').listeners.click();
+ const gate=p.elements.get('setup-gate');
+ const other=findText(gate,'选择新位置');
+ assert.ok(other);await other.listeners.click();
+ const confirm=findText(gate,'确认更换');
+ assert.ok(confirm);await confirm.listeners.click();
+ assert.equal(calls.some(call=>call.url.endsWith('/setup')||call.url.endsWith('/setup/native')),false);
+ assert.equal(calls.filter(call=>call.url.endsWith('/location/move')).length,1);
+ assert.equal(p.app.state.context.setup.root,'D:\\new-notes');
+ assert.equal(p.app.state.status.key,'location.doneRefreshFailed');
+});
+
+test('lost or malformed move responses reconcile only from the observed context root', async () => {
+ for (const moveReply of [new TypeError('lost response'), {status:200,data:{ok:true}}]) {
+  const p=await panel({reply:call=>{
+   if(call.url.endsWith('/fs/native-picker'))return {status:200,data:{ok:true,status:'selected',path:'D:\\new-notes'}};
+   if(call.url.endsWith('/location/move'))return moveReply;
+   if(call.url.endsWith('/context'))return context('D:\\new-notes');
+   return {status:200,data:{}};
+  }});
+  p.app.fixture({nativeFolderPicker:true,projectPath:'C:\\project',setup:{state:'INITIALIZED',root:'D:\\old'}});
+  findText(p.elements.get('footer'),'更改位置').listeners.click();
+  const choose=findText(p.elements.get('setup-gate'),'选择新位置');
+  await choose.listeners.click();
+  await findText(p.elements.get('setup-gate'),'确认更换').listeners.click();
+ assert.equal(p.app.state.context.setup.root,'D:\\new-notes');
+ assert.equal(p.app.state.status.key,'location.reconciled');
+ }
+});
+
+test('lost move response with unchanged context stays outcome-unknown and does not retry', async () => {
+ const p=await panel({reply:call=>{
+  if(call.url.endsWith('/fs/native-picker'))return {status:200,data:{ok:true,status:'selected',path:'D:\\new-notes'}};
+  if(call.url.endsWith('/location/move'))return new TypeError('lost response');
+  if(call.url.endsWith('/context'))return context('D:\\old');
+  return {status:200,data:{}};
+ }});
+ p.app.fixture({nativeFolderPicker:true,projectPath:'C:\\project',setup:{state:'INITIALIZED',root:'D:\\old'}});
+ findText(p.elements.get('footer'),'更改位置').listeners.click();
+ await findText(p.elements.get('setup-gate'),'选择新位置').listeners.click();
+ await findText(p.elements.get('setup-gate'),'确认更换').listeners.click();
+ assert.equal(p.app.state.status.key,'location.responseUnconfirmed');
+ assert.equal(p.calls.filter(call=>call.url.endsWith('/location/move')).length,1);
+});
+
+test('unavailable Windows root keeps the light rebind flow', async () => {
+ const p=await panel({reply:call=>call.url.endsWith('/fs/native-picker')
+   ?{status:200,data:{ok:true,status:'selected',path:'D:\\replacement'}}
+   :call.url.endsWith('/location')
+     ?{status:200,data:{ok:true,root:'D:\\replacement',state:'INITIALIZED',changed:true}}
+     :undefined});
+ p.app.fixture({nativeFolderPicker:true,projectPath:'C:\\project',setup:{state:'INITIALIZED',root:'D:\\missing',code:'CONFIGURED_ROOT_UNAVAILABLE'}});
+ findText(p.elements.get('footer'),'更改位置').listeners.click();
+ assert.equal(p.app.state.locationChangeMode,false);
+ await p.app.openPicker();
+ const confirm=findText(p.elements.get('setup-gate'),'确认使用此位置');
+ assert.ok(confirm);await confirm.listeners.click();
+ assert.equal(p.calls.some(call=>call.url.endsWith('/location/move')),false);
+ assert.equal(p.calls.filter(call=>call.url.endsWith('/location')).length,1);
+});
+
+test('an active Windows move blocks local saves and does not open another picker', async () => {
+ const p=await panel();
+ p.app.fixture({nativeFolderPicker:true,projectPath:'C:\\project',setup:{state:'INITIALIZED',root:'D:\\current'},locationChange:{active:true}});
+ assert.equal(await p.app.saveComposer(),false);
+ assert.equal(p.calls.length,0);
+ assert.equal(p.app.state.status.key,'location.running');
 });

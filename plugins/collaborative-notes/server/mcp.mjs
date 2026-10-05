@@ -116,7 +116,7 @@ export function createMcpServer({
     if (!context || context.ok === false || typeof context.projectPath !== "string") {
       return errorResult("NOTES_HOLDER_UNAVAILABLE");
     }
-    const ctx = { dataDir, projectPath: context.projectPath, holder };
+    const ctx = { dataDir, projectPath: context.projectPath, holder, platform };
     if (name === "notes-open-panel") {
       if (!validArgs(args || {}, [], {})) return errorResult("INVALID_ARGUMENT");
       const desktopSession = await desktop(holder);
@@ -234,7 +234,7 @@ export function createMcpServer({
       return { jsonrpc: "2.0", id, result: {
         protocolVersion: message.params?.protocolVersion,
         capabilities: { tools: {} },
-        serverInfo: { name: "collaborative-notes", version: "0.8.12" },
+        serverInfo: { name: "collaborative-notes", version: "0.8.13" },
       } };
     }
     if (method === "initialized" || method === "notifications/initialized" || method === "ping") {
