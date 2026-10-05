@@ -378,7 +378,13 @@ test("Darwin carry validation happens before any Windows project-lock work", asy
   }
 });
 
-test("existing i18n keys remain byte-equivalent to main while Windows move keys are namespaced", async () => {
+// Compares against the pre-move baseline commit, which exists only in the
+// development repository's history; elsewhere (e.g. the public tree) skip.
+const baselineAvailable = (() => {
+  try { execFileSync("git", ["cat-file", "-e", "9c530f1^{commit}"], { stdio: "ignore" }); return true; } catch { return false; }
+})();
+
+test("existing i18n keys remain byte-equivalent to main while Windows move keys are namespaced", { skip: !baselineAvailable && "baseline commit 9c530f1 not in this repository" }, async () => {
   const file = "plugins/collaborative-notes/server/panel/i18n.js";
   const load = (source) => {
     const sandbox = {};
@@ -386,7 +392,7 @@ test("existing i18n keys remain byte-equivalent to main while Windows move keys 
     return sandbox.CollaborativeNotesI18n;
   };
   const current = load(await fs.readFile(file, "utf8"));
-  const main = load(execFileSync("/usr/bin/git", ["show", `9c530f1:${file}`], { encoding: "utf8" }));
+  const main = load(execFileSync("git", ["show", `9c530f1:${file}`], { encoding: "utf8" }));
   for (const locale of ["zh", "en"]) {
     for (const key of Object.keys(main[locale])) assert.equal(current[locale][key], main[locale][key], `${locale}.${key}`);
   }
