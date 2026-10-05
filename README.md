@@ -296,12 +296,29 @@ Other ways to install:
   commands in your own PowerShell instead: Codex's sandbox cannot write to
   the plugin folders.
 
-**Update:** run `plugin marketplace upgrade` with your `$CODEX` (macOS:
-`"$CODEX" plugin marketplace upgrade`; Windows: `& $CODEX plugin marketplace
-upgrade`), then the `plugin add` command again, then restart ChatGPT. If the
-update changed a hook, trust it again and restart once more. If Notes does
-not open by itself after an update, quit ChatGPT completely and open it
-again. Your notes and settings are kept.
+**Update** (the install commands are different: `marketplace upgrade`
+fetches the newest release, then `plugin add` installs it):
+
+macOS, in Terminal:
+
+```sh
+CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex
+"$CODEX" plugin marketplace upgrade
+"$CODEX" plugin add collaborative-notes@collaborative-notes
+```
+
+Windows, in PowerShell:
+
+```powershell
+$CODEX = (Get-ChildItem "$env:LOCALAPPDATA\OpenAI\Codex\bin" -Recurse -Filter codex.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+& $CODEX plugin marketplace upgrade
+& $CODEX plugin add collaborative-notes@collaborative-notes
+```
+
+Then quit ChatGPT completely and open it again. If the update changed a hook,
+trust it again and restart once more. If Notes does not open by itself after
+an update, quit ChatGPT completely and open it again. Your notes and settings
+are kept.
 
 **Uninstall:**
 1. Run `plugin remove collaborative-notes@collaborative-notes` with your

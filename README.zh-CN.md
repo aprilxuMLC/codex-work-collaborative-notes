@@ -173,7 +173,25 @@ $CODEX = (Get-ChildItem "$env:LOCALAPPDATA\OpenAI\Codex\bin" -Recurse -Filter co
 - **没有 git：** 把本仓库下载为 ZIP 并解压，在 `marketplace add` 里用解压后的文件夹路径代替 GitHub 名称。
 - **让 Codex 帮你装：** 请它严格只运行上面的命令，出错就停下报告，不要安装其他软件，也不要手动修改 `~/.codex`。信任 hooks 仍然要你自己完成。Windows 上请自己在 PowerShell 里运行：Codex 的沙箱不能写入插件文件夹。
 
-**更新：** 用你的 `$CODEX` 运行 `plugin marketplace upgrade`（macOS：`"$CODEX" plugin marketplace upgrade`；Windows：`& $CODEX plugin marketplace upgrade`），再运行一次 `plugin add` 那条命令，然后重启 ChatGPT。如果这次更新改动了 hook，需要再信任一次并再重启一次。更新后如果便签没有自动打开，请完全退出 ChatGPT 再重新打开。便签和设置都会保留。
+**更新**（和安装的命令不同：`marketplace upgrade` 取得最新版本，`plugin add` 再把它装上）：
+
+macOS，在“终端”里：
+
+```sh
+CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex
+"$CODEX" plugin marketplace upgrade
+"$CODEX" plugin add collaborative-notes@collaborative-notes
+```
+
+Windows，在 PowerShell 里：
+
+```powershell
+$CODEX = (Get-ChildItem "$env:LOCALAPPDATA\OpenAI\Codex\bin" -Recurse -Filter codex.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+& $CODEX plugin marketplace upgrade
+& $CODEX plugin add collaborative-notes@collaborative-notes
+```
+
+然后完全退出 ChatGPT 再重新打开。如果这次更新改动了 hook，需要再信任一次并再重启一次。更新后如果便签没有自动打开，请完全退出 ChatGPT 再重新打开。便签和设置都会保留。
 
 **卸载：** 用你的 `$CODEX` 运行 `plugin remove collaborative-notes@collaborative-notes` 和 `plugin marketplace remove collaborative-notes`，然后重启 ChatGPT。便签仍保留在你的项目文件夹里；插件自己的数据（绑定、勾选、设置）在 `~/.codex/plugins/data/collaborative-notes-collaborative-notes/`（Windows 上是 `%USERPROFILE%\.codex\plugins\data\collaborative-notes-collaborative-notes\`），不需要时可以手动删除这个文件夹。
 
