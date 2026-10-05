@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.15
+
+- **A note saved to another lane no longer seems lost.** Choosing a lane in
+  "Save to lane" now switches the view to that lane (your draft is kept),
+  and after saving, the view shows the lane the note went into ("Saved to
+  L2 Deferred Work").
+- **A missing notes folder is never recreated.** If the folder Notes is
+  using disappears (renamed or moved), saving is refused and the panel says
+  the location is unavailable, instead of silently creating a new empty
+  folder. A brand-new project still gets its default `notes` folder on the
+  first save.
+- **The "Notes location not found" banner appears as soon as Notes opens**,
+  not only after opening the location view.
+
+Fixes issue #3 (Windows test of 0.8.14), on both macOS and Windows.
+
 ## 0.8.14
 
 - **macOS:** "Choose another location" (first-use setup and Change location)

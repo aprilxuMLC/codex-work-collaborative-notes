@@ -104,7 +104,7 @@ export class AppServerClient {
     spawn = defaultSpawn,
     binary,
     requestTimeoutMs = DEFAULT_TIMEOUT_MS,
-    clientInfo = { name: "collaborative-notes", version: "0.8.14" },
+    clientInfo = { name: "collaborative-notes", version: "0.8.15" },
   } = {}) {
     this.env = env;
     this.spawn = spawn;

@@ -153,7 +153,7 @@ export function createMcpServer({
         if (!isValidSessionId(args.thread)) return errorResult("NOTES_INVALID_ARGUMENT");
         const other = await contextResolver(args.thread);
         if (!other || other.ok === false || typeof other.projectPath !== "string") return errorResult("NOTES_THREAD_UNAVAILABLE");
-        const read = await readNotes({ dataDir, projectPath: other.projectPath, holder: args.thread }, args.lane);
+        const read = await readNotes({ dataDir, projectPath: other.projectPath, holder: args.thread, platform }, args.lane);
         if (read?.ok === false) return errorResult(read.code || "NOTES_OPERATION_FAILED");
         return successResult({ ...read, laneLabel, crossThread: true, readOnly: true, thread: { id: args.thread, title: other.title || null } });
       }
@@ -177,7 +177,7 @@ export function createMcpServer({
         if (!isValidSessionId(args.thread)) return errorResult("NOTES_INVALID_ARGUMENT");
         const other = await contextResolver(args.thread);
         if (!other || other.ok === false || typeof other.projectPath !== "string") return errorResult("NOTES_THREAD_UNAVAILABLE");
-        noteCtx = { dataDir, projectPath: other.projectPath, holder: args.thread };
+        noteCtx = { dataDir, projectPath: other.projectPath, holder: args.thread, platform };
       }
       const notes = await readNotes(noteCtx, args.lane);
       if (notes?.ok === false) return errorResult(notes.code);
@@ -234,7 +234,7 @@ export function createMcpServer({
       return { jsonrpc: "2.0", id, result: {
         protocolVersion: message.params?.protocolVersion,
         capabilities: { tools: {} },
-        serverInfo: { name: "collaborative-notes", version: "0.8.14" },
+        serverInfo: { name: "collaborative-notes", version: "0.8.15" },
       } };
     }
     if (method === "initialized" || method === "notifications/initialized" || method === "ping") {

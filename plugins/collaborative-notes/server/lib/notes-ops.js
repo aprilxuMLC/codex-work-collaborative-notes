@@ -28,8 +28,8 @@ function validContext(ctx) {
 async function resolveOperationRoot(ctx, forWrite = false) {
   if (!validContext(ctx)) return failure("INVALID_CONTEXT");
   const resolved = forWrite
-    ? await ensureRootForWrite(ctx.dataDir, ctx.projectPath)
-    : await resolveRoot(ctx.dataDir, ctx.projectPath);
+    ? await ensureRootForWrite(ctx.dataDir, ctx.projectPath, { platform: ctx.platform })
+    : await resolveRoot(ctx.dataDir, ctx.projectPath, { platform: ctx.platform });
   return resolved.ok ? resolved : resolved;
 }
 
@@ -158,7 +158,7 @@ function staleResult(lane) {
 }
 
 async function loadForMutation(ctx, lane, expectedVersion) {
-  const loaded = await loadLane(ctx, lane);
+  const loaded = await loadLane(ctx, lane, false);
   if (loaded.ok === false) return loaded;
   if (loaded.lane.version !== expectedVersion) return staleResult(loaded.lane);
   return loaded;
@@ -169,7 +169,9 @@ async function editNoteUnlocked(ctx, lane, itemKey, content, expectedVersion, { 
   if (!validContext(ctx)) return failure("INVALID_CONTEXT");
   const attempts = overwrite ? 3 : 1;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const loaded = overwrite ? await loadLane(ctx, lane) : await loadForMutation(ctx, lane, expectedVersion);
+    const loaded = overwrite
+      ? await loadLane(ctx, lane, false)
+      : await loadForMutation(ctx, lane, expectedVersion);
     if (loaded.ok === false) return loaded;
     const parsed = parseLaneBody(loaded.lane.body);
     const matches = matchingNodes(parsed, itemKey);

@@ -32,9 +32,9 @@ async function panel({native=true,reply,instance=null}={}) {
     renderAll = () => { renderHeader(); renderLocationBanner(); renderSetup(); renderMain(); };
     loadContext = async () => { const next=await api("/context");context={...next,...(next.nativeFolderPicker&&!Object.hasOwn(next,"locationMove")?{locationMove:true}:{})};renderAll(); };
     loadLane = async () => null;
-    global.testPanel={openPicker,completeSetup,renderSetup,renderFooter,beginLocationChange,confirmLocationChange,cancelLocationSelection,saveComposer,refreshTitle,
-      get state(){return {context,nativeCandidate,nativeBusy,setupBusy,composerDraft,status,locationTarget,locationChangeMode,locationChangeBusy,locationPendingResult,conflict,setupUncertain:typeof setupUncertain==='undefined'?false:setupUncertain};},
-      fixture(value){context={...value,...(value.nativeFolderPicker&&!Object.hasOwn(value,"locationMove")?{locationMove:true}:{})};locale='zh';namingNeeded=true;setupLabels=Object.fromEntries(LANE_KEYS.map(key=>[key,key]));composerDraft='隔离测试草稿';composerTouched=true;renderAll();}
+    global.testPanel={openPicker,completeSetup,renderSetup,renderFooter,beginLocationChange,confirmLocationChange,cancelLocationSelection,saveComposer,refreshTitle,selectLane,
+      get state(){return {context,nativeCandidate,nativeBusy,setupBusy,activeLane,composerLane,composerDraft,status,locationTarget,locationChangeMode,locationChangeBusy,locationPendingResult,conflict,setupUncertain:typeof setupUncertain==='undefined'?false:setupUncertain};},
+      fixture(value){context={...value,...(value.nativeFolderPicker&&!Object.hasOwn(value,"locationMove")?{locationMove:true}:{})};locale=value.locale||'zh';lanes=value.lanes||lanes;if(value.activeLane)activeLane=value.activeLane;if(value.composerLane)composerLane=value.composerLane;namingNeeded=true;setupLabels=Object.fromEntries(LANE_KEYS.map(key=>[key,key]));composerDraft=value.composerDraft||'隔离测试草稿';composerTouched=true;renderAll();}
     };
   `);
   vm.runInContext(source,sandbox);
@@ -54,6 +54,24 @@ test("system cancel and failed reselect preserve the prior candidate",async()=>{
  let count=0;const p=await panel({reply:()=>++count===1?undefined:count===2?{status:200,data:{ok:true,status:'cancelled'}}:{status:503,data:{code:'PICKER_UNAVAILABLE'}}});
  await p.app.openPicker();await p.app.openPicker();await p.app.openPicker();assert.equal(p.app.state.nativeCandidate,'D:\\候选目录');assert.equal(p.app.state.composerDraft,'隔离测试草稿');
 });
+
+test("composer lane selection switches the viewed tab and keeps the draft", async () => {
+ const lanes=[{key:'conversation_todo',label:'L1 Conversation To-do',descriptive:'Conversation To-do'},{key:'deferred_work',label:'L2 Deferred Work',descriptive:'Deferred Work'}];
+ const p=await panel();
+ p.app.fixture({locale:'en',projectPath:'C:\\project',setup:{state:'INITIALIZED',root:'C:\\notes'},lanes,activeLane:'conversation_todo',composerLane:'conversation_todo'});
+ const select=p.elements.get('composer-lane');select.value='deferred_work';await select.listeners.change();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(p.app.state.activeLane,'deferred_work');assert.equal(p.app.state.composerLane,'deferred_work');assert.equal(p.app.state.composerDraft,'隔离测试草稿');
+});
+
+test("saving to a different composer lane ends on that lane and names it", async () => {
+ const lanes=[{key:'conversation_todo',label:'L1 Conversation To-do',descriptive:'Conversation To-do'},{key:'deferred_work',label:'L2 Deferred Work',descriptive:'Deferred Work'}];
+ const p=await panel();
+ p.app.fixture({locale:'en',projectPath:'C:\\project',setup:{state:'INITIALIZED',root:'C:\\notes'},lanes,activeLane:'conversation_todo',composerLane:'deferred_work',composerDraft:'saved draft'});
+ assert.equal(await p.app.saveComposer(),true);
+ assert.equal(p.app.state.activeLane,'deferred_work');assert.equal(p.app.state.composerLane,'deferred_work');
+ assert.equal(p.app.state.status.key,'status.savedTo');assert.equal(p.app.state.status.text,'Saved to L2 Deferred Work');
+ assert.equal(p.calls.at(-1).url,'/api/t/thread-panel-fixture/lanes/deferred_work/notes');
+});
 test("native confirmation keeps naming success separate from refused binding",async()=>{
  const p=await panel({reply:call=>call.url==='/api/lane-config'?{status:200,data:{laneOverrides:{}}}:{status:400,data:{code:'LOCATION_INVALID'}}});
  await p.app.completeSetup('custom','D:\\candidate',{native:true});assert.equal(p.calls.length,2);assert.ok(p.calls[1].url.endsWith('/setup/native'));
@@ -71,7 +89,7 @@ test("another page wins binding; this page never auto-saves into that location",
 test("confirmed binding continues saving; failed save reports configured root and preserves draft",async()=>{
  for(const saved of [true,false]){
  const p=await panel({reply:call=>call.url==='/api/lane-config'?{status:200,data:{}}:call.url.endsWith('/setup/native')?configured('D:\\candidate'):call.url.endsWith('/context')?context('D:\\candidate'):{status:saved?200:500,data:saved?{ok:true}:{code:'WRITE_FAILED'}}});
- await p.app.completeSetup('custom','D:\\candidate',{native:true});assert.equal(p.app.state.context.setup.state,'INITIALIZED');assert.equal(p.app.state.composerDraft,saved?'':'隔离测试草稿');assert.equal(p.app.state.status.key,saved?'status.savedNote':'setup.draftPending');
+ await p.app.completeSetup('custom','D:\\candidate',{native:true});assert.equal(p.app.state.context.setup.state,'INITIALIZED');assert.equal(p.app.state.composerDraft,saved?'':'隔离测试草稿');assert.equal(p.app.state.status.key,saved?'status.savedTo':'setup.draftPending');
  }
 });
 test("pagehide aborts the owned picker, while focus does not cancel it",async()=>{

@@ -710,6 +710,16 @@
     banner.append(row);
   }
 
+  function markLocationUnavailable(error) {
+    if (error?.code !== "CONFIGURED_ROOT_UNAVAILABLE" || !context) return false;
+    context = {
+      ...context,
+      setup: { ...(context.setup || {}), state: "INITIALIZED", code: error.code },
+    };
+    renderLocationBanner();
+    return true;
+  }
+
   function branchDismissed(childId) {
     try { return global.sessionStorage.getItem(`collaborative-notes:branch:${childId}`) === "1"; } catch { return false; }
   }
@@ -1660,11 +1670,13 @@
       renderAll();
       if (!skipLane && context.setup?.state === "INITIALIZED") await loadLane(activeLane);
     } catch (error) {
-      context = null;
-      nodes["thread-title"].textContent = t("label.threadUnavailable");
-      nodes["notes-main"].hidden = true;
-      nodes["setup-gate"].hidden = true;
-      showStatus("status.loadFailed", { error: errorText(error) }, "error");
+      if (!markLocationUnavailable(error)) {
+        context = null;
+        nodes["thread-title"].textContent = t("label.threadUnavailable");
+        nodes["notes-main"].hidden = true;
+        nodes["setup-gate"].hidden = true;
+        showStatus("status.loadFailed", { error: errorText(error) }, "error");
+      }
     }
   }
 
@@ -1698,6 +1710,7 @@
       }
       return result;
     } catch (error) {
+      if (markLocationUnavailable(error)) return null;
       if (error.status === 409 && context?.setup?.state !== "INITIALIZED") return;
       if (!poll) showStatus("status.loadFailed", { error: errorText(error) }, "error");
       return null;
@@ -1712,7 +1725,11 @@
   }
 
   async function selectLane(key) {
-    if (key === activeLane) return;
+    if (key === activeLane) {
+      composerLane = key;
+      renderComposer();
+      return;
+    }
     const apply = async () => {
       if (editor?.touched) editor = null;
       searchQuery = "";
@@ -1726,6 +1743,7 @@
       await loadLane(key);
     };
     if (editor?.touched) {
+      nodes["composer-lane"].value = composerLane;
       requestConfirm(t("status.unsavedSwitch"), apply);
       return;
     }
@@ -1787,8 +1805,16 @@
       composerDraft = "";
       composerTouched = false;
       quoted = null;
-      showStatus("status.savedNote", undefined, "success");
-      await loadLane(composerLane);
+      const savedLane = composerLane;
+      if (activeLane !== savedLane) {
+        activeLane = savedLane;
+        searchQuery = "";
+        searchResults = null;
+        conflict = null;
+        renderLaneTabs();
+      }
+      showStatus("status.savedTo", { lane: laneLabel(savedLane) }, "success");
+      await loadLane(savedLane);
       return true;
     } catch (error) {
       clearStatus();
@@ -2314,7 +2340,7 @@
     if (hasDraft()) { requestConfirm(t("status.unsavedRefresh"), apply); return; }
     await apply();
   });
-  nodes["composer-lane"].addEventListener("change", () => { composerLane = nodes["composer-lane"].value; });
+  nodes["composer-lane"].addEventListener("change", () => { void selectLane(nodes["composer-lane"].value); });
   nodes["composer"].addEventListener("input", () => {
     composerDraft = nodes["composer"].value;
     composerTouched = true;

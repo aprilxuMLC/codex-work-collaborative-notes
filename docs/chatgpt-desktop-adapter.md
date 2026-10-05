@@ -2,9 +2,8 @@
 
 **English** | [中文](chatgpt-desktop-adapter.zh-CN.md)
 
-> **Version:** 0.8.14 · validated on macOS (ChatGPT 26.908.70816, 26.928.31416) and
-> Windows (ChatGPT 26.930.2377.0; the native folder dialog was validated on the
-> contributor's Windows machine).
+> **Version:** 0.8.15 · validated on macOS (ChatGPT 26.908.70816, 26.928.31416,
+> 26.930.51102) and Windows (ChatGPT 26.930.2377.0, 26.930.3930.0).
 >
 > **Scope:** how this plugin realizes the Collaborative Notes
 > [Core Contract](core-contract.md) on the ChatGPT desktop app's **Codex** mode

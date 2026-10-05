@@ -18,8 +18,8 @@ transient workspace** beside the current conversation. It helps you and the
 agent decide what should keep occupying attention now, what can safely be set
 aside, and how to bring it back accurately when it matters again.
 
-**Release 0.8.14** is validated on macOS (ChatGPT 26.928.31416) and on
-Windows (ChatGPT 26.930.2377.0). It works in Codex conversations and in Work
+**Release 0.8.15** is validated on macOS (ChatGPT 26.930.51102) and on
+Windows (ChatGPT 26.930.3930.0). It works in Codex conversations and in Work
 conversations that run on your computer.
 
 It continues the [Collaborative Notes for DeepSeek Harness](https://github.com/aprilxuMLC/dsh-collaborative-notes)

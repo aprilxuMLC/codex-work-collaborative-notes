@@ -245,6 +245,10 @@ async function relocateDefault(dataDir, projectPath, action, customPath, { accep
   const current = state.state.bindings[project];
   if (!current || typeof current.path !== "string") return failure("SETUP_REQUIRED");
   if (action !== "default" && action !== "custom") return failure("BAD_ACTION");
+  if (current.confirmedAt === null && current.path === path.join(project, "notes")) {
+    const observed = await resolveRoot(dataDir, projectPath);
+    if (!observed.ok) return observed;
+  }
 
   let root;
   let pendingDefault = false;
@@ -297,7 +301,18 @@ async function relocateWindows(dataDir, projectPath, action, customPath, {
     if (pathKey(current.path, "win32") !== pathKey(path.resolve(expectedRoot), "win32")) {
       return failure("LOCATION_CHANGED", { root: current.path });
     }
-    if (await currentRootAvailable(current.path, "win32")) return failure("LOCATION_REBIND_UNAVAILABLE", { root: current.path });
+    const pendingCurrentDefault = current.confirmedAt === null
+      && pathKey(current.path, "win32") === pathKey(path.join(project, "notes"), "win32");
+    if (await currentRootAvailable(current.path, "win32")) {
+      if (pendingCurrentDefault) {
+        const confirmed = await persist({
+          ...state,
+          bindings: { ...state.bindings, [project]: { ...current, confirmedAt: new Date().toISOString() } },
+        });
+        if (!confirmed.ok) return confirmed;
+      }
+      return failure("LOCATION_REBIND_UNAVAILABLE", { root: current.path });
+    }
     if (action !== "default" && action !== "custom") return failure("BAD_ACTION");
 
     let root;
@@ -353,7 +368,21 @@ export async function relocate(dataDir, projectPath, action, customPath, {
     : relocateDefault(dataDir, projectPath, action, customPath, { acceptEmpty });
 }
 
-export async function resolveRoot(dataDir, projectPath) {
+// A pending default (<project>/notes chosen before it existed) is confirmed
+// as soon as the folder is seen to exist. Reads stay lock-free; only that
+// one-time confirmation takes the bindings lock and re-checks under it.
+async function confirmPendingDefault(dataDir, project, root, platform) {
+  return withBindingState(dataDir, async (state, persist) => {
+    const binding = state.bindings[project];
+    if (!binding || binding.path !== root || binding.confirmedAt !== null) return { ok: true };
+    return persist({
+      ...state,
+      bindings: { ...state.bindings, [project]: { ...binding, confirmedAt: new Date().toISOString() } },
+    });
+  }, { platform });
+}
+
+export async function resolveRoot(dataDir, projectPath, { platform = process.platform } = {}) {
   const project = await projectRealPath(projectPath);
   if (!project) return failure("SETUP_REQUIRED");
   const state = await readState(dataDir);
@@ -361,11 +390,10 @@ export async function resolveRoot(dataDir, projectPath) {
   const binding = state.state.bindings[project];
   if (!binding || typeof binding.path !== "string") return failure("SETUP_REQUIRED");
   const root = binding.path;
+  const pendingDefault = binding.confirmedAt === null && root === path.join(project, "notes");
   let stat;
   try { stat = await fs.lstat(root); } catch (error) {
-    if (isMissing(error) && binding.confirmedAt === null && root === path.join(project, "notes")) {
-      return { ok: true, root, pendingDefault: true };
-    }
+    if (isMissing(error) && pendingDefault) return { ok: true, root, pendingDefault: true };
     return failure("CONFIGURED_ROOT_UNAVAILABLE");
   }
   if (stat.isSymbolicLink() || !stat.isDirectory()) return failure("CONFIGURED_ROOT_UNAVAILABLE");
@@ -373,15 +401,18 @@ export async function resolveRoot(dataDir, projectPath) {
     const real = await fs.realpath(root);
     if (real !== root) return failure("CONFIGURED_ROOT_UNAVAILABLE");
   } catch { return failure("CONFIGURED_ROOT_UNAVAILABLE"); }
-  return binding.confirmedAt === null && root === path.join(project, "notes")
-    ? { ok: true, root, pendingDefault: true }
-    : { ok: true, root };
+  if (pendingDefault) {
+    // Best effort: if the lock is busy, the next read confirms it.
+    await confirmPendingDefault(dataDir, project, root, platform).catch(() => null);
+  }
+  return { ok: true, root };
 }
 
-export async function ensureRootForWrite(dataDir, projectPath) {
-  const resolved = await resolveRoot(dataDir, projectPath);
+export async function ensureRootForWrite(dataDir, projectPath, { platform = process.platform } = {}) {
+  const resolved = await resolveRoot(dataDir, projectPath, { platform });
   if (!resolved.ok) return resolved;
   if (!resolved.pendingDefault) return resolved;
+  // Only a default folder that has never existed is created on first write.
   try {
     await fs.mkdir(resolved.root);
   } catch (error) {
@@ -391,10 +422,6 @@ export async function ensureRootForWrite(dataDir, projectPath) {
   if (!stat || stat.isSymbolicLink() || !stat.isDirectory()) return failure("CONFIGURED_ROOT_UNAVAILABLE");
   const project = await projectRealPath(projectPath);
   if (!project) return failure("CONFIGURED_ROOT_UNAVAILABLE");
-  const state = await readState(dataDir);
-  if (!state.ok) return state;
-  const binding = state.state.bindings[project];
-  if (!binding || binding.confirmedAt !== null) return { ok: true, root: resolved.root };
-  const updated = await updateBinding(dataDir, project, { ...binding, confirmedAt: new Date().toISOString() });
-  return updated.ok ? { ok: true, root: resolved.root } : updated;
+  const confirmed = await confirmPendingDefault(dataDir, project, resolved.root, platform);
+  return confirmed.ok ? { ok: true, root: resolved.root } : confirmed;
 }

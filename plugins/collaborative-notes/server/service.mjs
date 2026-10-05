@@ -49,7 +49,7 @@ const PANEL_ASSETS = Object.freeze({
 });
 const MAX_REQUEST_BYTES = 1024 * 1024;
 const DEFAULT_IDLE_MS = 12 * 60 * 60 * 1000;
-const PLUGIN_VERSION = "0.8.14";
+const PLUGIN_VERSION = "0.8.15";
 const MAX_REFERENCE_CHARS = 8000;
 const REFERENCE_COPY_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -575,7 +575,7 @@ export class PanelService {
 
   async notedItemIds(threadId, context) {
     const notedItemIds = new Set();
-    const noteContext = { dataDir: this.dataDir, projectPath: context.projectPath, holder: threadId };
+    const noteContext = { dataDir: this.dataDir, projectPath: context.projectPath, holder: threadId, platform: this.nativePlatform };
     for (const lane of LANE_KEYS) {
       try {
         const notes = await readNotes(noteContext, lane);
@@ -609,7 +609,7 @@ export class PanelService {
   }
 
   async carryStatus(threadId, context) {
-    const setup = await import("./lib/binding.js").then(({ resolveRoot }) => resolveRoot(this.dataDir, context.projectPath));
+    const setup = await import("./lib/binding.js").then(({ resolveRoot }) => resolveRoot(this.dataDir, context.projectPath, { platform: this.nativePlatform }));
     if (!setup.ok) return setup.code === "SETUP_REQUIRED" ? null : setup;
     if (typeof setup.root !== "string") return null;
     let child;
@@ -798,10 +798,10 @@ export class PanelService {
     const parentIds = new Set(itemRecordsForCarry(parentItems).map((record) => record?.item?.id ?? record?.id).filter((id) => typeof id === "string"));
     const parentContext = await this.threadContext(parentThreadId);
     if (!parentContext || parentContext.ok === false) return failure("CARRY_SOURCE_UNAVAILABLE");
-    const parentCtx = { dataDir: this.dataDir, projectPath: parentContext.projectPath, holder: parentThreadId };
-    const childCtx = { dataDir: this.dataDir, projectPath: context.projectPath, holder: threadId };
-    const parentRoot = await import("./lib/binding.js").then(({ resolveRoot }) => resolveRoot(this.dataDir, parentContext.projectPath));
-    const childRoot = await import("./lib/binding.js").then(({ resolveRoot }) => resolveRoot(this.dataDir, context.projectPath));
+    const parentCtx = { dataDir: this.dataDir, projectPath: parentContext.projectPath, holder: parentThreadId, platform: this.nativePlatform };
+    const childCtx = { dataDir: this.dataDir, projectPath: context.projectPath, holder: threadId, platform: this.nativePlatform };
+    const parentRoot = await import("./lib/binding.js").then(({ resolveRoot }) => resolveRoot(this.dataDir, parentContext.projectPath, { platform: this.nativePlatform }));
+    const childRoot = await import("./lib/binding.js").then(({ resolveRoot }) => resolveRoot(this.dataDir, context.projectPath, { platform: this.nativePlatform }));
     if (!parentRoot.ok || !childRoot.ok) return failure("SETUP_REQUIRED");
     const lanes = Array.isArray(selectedLanes) ? selectedLanes.filter(isLaneKey) : LANE_KEYS;
     const plan = [];
@@ -1291,13 +1291,13 @@ export class PanelService {
           const markerLanes = {};
           const selectedSet = new Set(plan.plan.map((entry) => entry.lane));
           const lockEntries = [...plan.plan].filter((entry) => !entry.committed).sort((a, b) => LANE_KEYS.indexOf(a.lane) - LANE_KEYS.indexOf(b.lane));
-          const writableRoot = await import("./lib/binding.js").then(({ ensureRootForWrite }) => ensureRootForWrite(this.dataDir, context.projectPath));
+          const writableRoot = await import("./lib/binding.js").then(({ ensureRootForWrite }) => ensureRootForWrite(this.dataDir, context.projectPath, { platform: this.nativePlatform }));
           if (!writableRoot.ok) return sendError(res, writableRoot.code, errorStatus(writableRoot.code));
           plan.childRoot = writableRoot.root;
           const laneLocks = new Map();
           try {
             const parentContext = await this.threadContext(plan.parentThreadId);
-            const parentRoot = await (await import("./lib/binding.js")).resolveRoot(this.dataDir, parentContext.projectPath);
+            const parentRoot = await (await import("./lib/binding.js")).resolveRoot(this.dataDir, parentContext.projectPath, { platform: this.nativePlatform });
             if (!parentRoot.ok) return sendJson(res, 409, failure("CARRY_SOURCE_UNAVAILABLE"));
             for (const entry of lockEntries) {
               const laneDir = path.join(plan.childRoot, entry.lane);
@@ -1350,7 +1350,7 @@ export class PanelService {
                 outcome: "writing", committed: false, carriedKeys: [],
                 plannedKeys: carriedKeys, plannedVersion: versionForBytes(Buffer.from(bodyText, "utf8")), plannedOutcome,
               };
-              const aheadRoot = await import("./lib/binding.js").then(({ ensureRootForWrite }) => ensureRootForWrite(this.dataDir, context.projectPath));
+              const aheadRoot = await import("./lib/binding.js").then(({ ensureRootForWrite }) => ensureRootForWrite(this.dataDir, context.projectPath, { platform: this.nativePlatform }));
               try {
                 if (!aheadRoot.ok) throw new Error(aheadRoot.code);
                 await this.writePartialCarryMarker(path.join(aheadRoot.root, ".carry-over", `${apiThread}.json`), plan.parentThreadId, markerLanes, choice, selected);
@@ -1363,7 +1363,7 @@ export class PanelService {
                 markerLanes[entry.lane] = { outcome: "failed", committed: false, carriedKeys: [] };
                 for (const remaining of plan.plan) if (!markerLanes[remaining.lane]) markerLanes[remaining.lane] = { outcome: "pending", committed: false, carriedKeys: [] };
                 for (const skipped of LANE_KEYS) if (!markerLanes[skipped]) markerLanes[skipped] = { outcome: "skipped", committed: false, carriedKeys: [] };
-                const root = await import("./lib/binding.js").then(({ ensureRootForWrite }) => ensureRootForWrite(this.dataDir, context.projectPath));
+                const root = await import("./lib/binding.js").then(({ ensureRootForWrite }) => ensureRootForWrite(this.dataDir, context.projectPath, { platform: this.nativePlatform }));
                 let markerFailed = false;
                 if (root.ok) {
                   try {
@@ -1376,7 +1376,7 @@ export class PanelService {
             const outcome = decision === "merge" ? "merged" : decision === "replace" ? "replaced" : decision === "copy" ? "copied" : "kept";
             outcomes[entry.lane] = { outcome, carried: carriedKeys.length, skipped: entry.skipped || 0 };
             markerLanes[entry.lane] = { outcome, committed: true, carriedKeys, plannedKeys: carriedKeys };
-            const partialRoot = await import("./lib/binding.js").then(({ ensureRootForWrite }) => ensureRootForWrite(this.dataDir, context.projectPath));
+            const partialRoot = await import("./lib/binding.js").then(({ ensureRootForWrite }) => ensureRootForWrite(this.dataDir, context.projectPath, { platform: this.nativePlatform }));
             if (!partialRoot.ok) return sendJson(res, 409, failure("CARRY_PARTIAL", { lane: entry.lane, outcomes, markerLanes, markerFailed: true }));
             try {
               await this.writePartialCarryMarker(path.join(partialRoot.root, ".carry-over", `${apiThread}.json`), plan.parentThreadId, markerLanes, choice, selected);
@@ -1390,7 +1390,7 @@ export class PanelService {
           for (const lane of LANE_KEYS) {
             if (!selectedSet.has(lane)) markerLanes[lane] = { outcome: "skipped", carriedKeys: [] };
           }
-          const setup = await import("./lib/binding.js").then(({ ensureRootForWrite }) => ensureRootForWrite(this.dataDir, context.projectPath));
+          const setup = await import("./lib/binding.js").then(({ ensureRootForWrite }) => ensureRootForWrite(this.dataDir, context.projectPath, { platform: this.nativePlatform }));
           if (!setup.ok) return sendError(res, setup.code, errorStatus(setup.code));
           const marker = carryMarker(plan.parentThreadId, markerLanes, "decided", { choice, selectedLanes: selected });
           await writeJsonAtomic(path.join(setup.root, ".carry-over", `${apiThread}.json`), marker);
@@ -1408,7 +1408,7 @@ export class PanelService {
     if (url.pathname === `/api/t/${encodeURIComponent(apiThread)}/context` && req.method === "GET") {
       const setupState = await import("./lib/binding.js").then(({ getSetupState }) => getSetupState(this.dataDir, context.projectPath));
       const resolvedSetup = setupState.state === "INITIALIZED"
-        ? await resolveRoot(this.dataDir, context.projectPath)
+        ? await resolveRoot(this.dataDir, context.projectPath, { platform: this.nativePlatform })
         : null;
       const contextSetup = resolvedSetup?.ok === false && resolvedSetup.code === "CONFIGURED_ROOT_UNAVAILABLE"
         ? { ...setupState, code: resolvedSetup.code }

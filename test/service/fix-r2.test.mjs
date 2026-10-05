@@ -8,7 +8,7 @@ import { test } from "node:test";
 
 import { setup, ensureRootForWrite, resolveRoot } from "../../plugins/collaborative-notes/server/lib/binding.js";
 import { acquireLock, readLane, releaseLock, writeLane } from "../../plugins/collaborative-notes/server/lib/lane-store.js";
-import { createNote, editNote, readNotes } from "../../plugins/collaborative-notes/server/lib/notes-ops.js";
+import { createNote, createSourcedNote, editNote, readNotes } from "../../plugins/collaborative-notes/server/lib/notes-ops.js";
 import { getItemKey, parseLaneBody, serializeLaneBody } from "../../plugins/collaborative-notes/server/lib/structured-item.js";
 import { createPanelLauncher, runHook } from "../../plugins/collaborative-notes/server/hook.mjs";
 import { createMcpServer } from "../../plugins/collaborative-notes/server/mcp.mjs";
@@ -247,6 +247,56 @@ test("R2-10 retrying a pending default-root binding confirms it before reads", a
     assert.equal(typeof after.bindings[await fs.realpath(value.project)].confirmedAt, "string");
     await fs.rm(root, { recursive: true, force: true });
     assert.equal((await resolveRoot(value.dataDir, value.project)).code, "CONFIGURED_ROOT_UNAVAILABLE");
+  } finally { await fs.rm(value.base, { recursive: true, force: true }); }
+});
+
+test("R2-13 an observed default root stays unavailable after it is removed", async () => {
+  for (const platform of ["darwin", "win32"]) {
+    const value = await fixture(`cn-fix-r2-root-${platform}-`);
+    try {
+      await setup(value.dataDir, value.project, "default", undefined, { platform });
+      const root = path.join(await fs.realpath(value.project), "notes");
+      await fs.mkdir(path.join(root, lane), { recursive: true });
+      await fs.writeFile(path.join(root, lane, `${threadId}.md`), "hand-created\n");
+      const context = { dataDir: value.dataDir, projectPath: value.project, holder: threadId, platform };
+      assert.equal((await readNotes(context, lane)).ok, undefined);
+      const statePath = path.join(value.dataDir, "bindings.json");
+      const confirmed = JSON.parse(await fs.readFile(statePath, "utf8"));
+      assert.equal(typeof confirmed.bindings[await fs.realpath(value.project)].confirmedAt, "string");
+
+      await fs.rename(root, path.join(value.base, "moved-notes"));
+      const existing = (await readNotes(context, lane));
+      assert.equal(existing.code, "CONFIGURED_ROOT_UNAVAILABLE");
+      assert.equal((await createNote(context, lane, { content: "must not recreate" })).code, "CONFIGURED_ROOT_UNAVAILABLE");
+      assert.equal((await createSourcedNote(context, lane, {
+        snapshot: "source", source: { threadId, itemId: "source-item" }, comment: "source",
+      })).code, "CONFIGURED_ROOT_UNAVAILABLE");
+      assert.equal((await editNote(context, lane, "item-key", "edited", "0")).code, "CONFIGURED_ROOT_UNAVAILABLE");
+      assert.equal(await exists(root), false);
+
+      const mcp = createMcpServer({
+        platform,
+        resolveDataDirectory: async () => value.dataDir,
+        contextResolver: async () => ({ projectPath: value.project }),
+      });
+      const read = await mcp.callTool("notes-read", { lane }, { threadId, plugin_id: "collaborative-notes@collaborative-notes" });
+      assert.equal(JSON.parse(read.content[0].text).code, "NOTES_CONFIGURED_ROOT_UNAVAILABLE");
+      const write = await mcp.callTool("notes-write", { lane, content: "must not recreate" }, { threadId, plugin_id: "collaborative-notes@collaborative-notes" });
+      assert.equal(JSON.parse(write.content[0].text).code, "NOTES_CONFIGURED_ROOT_UNAVAILABLE");
+      assert.equal(await exists(root), false);
+    } finally { await fs.rm(value.base, { recursive: true, force: true }); }
+  }
+});
+
+test("R2-14 a never-created Windows default remains lazy until its first write", async () => {
+  const value = await fixture("cn-fix-r2-root-win-lazy-");
+  try {
+    await setup(value.dataDir, value.project, "default", undefined, { platform: "win32" });
+    const root = path.join(await fs.realpath(value.project), "notes");
+    assert.equal(await exists(root), false);
+    const created = await createNote({ dataDir: value.dataDir, projectPath: value.project, holder: threadId, platform: "win32" }, lane, { content: "first write" });
+    assert.equal(created.ok, true);
+    assert.equal(await exists(root), true);
   } finally { await fs.rm(value.base, { recursive: true, force: true }); }
 });
 

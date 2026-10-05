@@ -220,6 +220,13 @@ export async function changeLocation(
           && pathKey(sourcePath, platform) === pathKey(path.join(project, "notes"), platform);
         const sourceRoot = await identityOfDirectory(sourcePath, platform);
         if (!sourceRoot && !pendingDefault) return failure("CONFIGURED_ROOT_UNAVAILABLE", { root: sourcePath });
+        if (sourceRoot && pendingDefault) {
+          const confirmed = await persist({
+            ...state,
+            bindings: { ...state.bindings, [project]: { ...binding, confirmedAt: new Date().toISOString() } },
+          });
+          if (!confirmed.ok) return { ...confirmed, root: sourcePath };
+        }
 
         if (!(await validateExistingDirectory(targetPath))) return failure("LOCATION_INVALID", { root: sourcePath });
         const targetRoot = await fs.realpath(targetPath);
