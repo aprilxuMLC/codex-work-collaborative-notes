@@ -83,6 +83,16 @@ place through full-text search or model inference.
 
 > **Attention can be released without losing the return path.**
 
+The two are distinct but coupled. Compacting a long conversation is itself an
+attention decision — made by the host, not by you — about which details stay
+in the agent's working context. A note keeps your own judgement of what
+deserves attention; when you bring it back, its source returns the forgotten
+detail to the agent's memory. Memory and attention are best read together, as
+a loop: what stays in memory shapes what can receive attention, and what you
+attend to decides what is worth bringing back into memory.
+
+> **Distinct, but coupled: compaction decides for you; a note lets you decide.**
+
 The current agent does not have to predict every future context need at
 capture time. A later agent or workflow with read authority can read the
 note, follow its preserved source back to the original discussion, and read
