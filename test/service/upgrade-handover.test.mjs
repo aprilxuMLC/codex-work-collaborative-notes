@@ -27,7 +27,7 @@ test("an upgraded-away service starts the newest installed version on its data d
     const spawned = [];
     const dataDir = path.join(base, "data");
     const service = new PanelService({
-      dataDir, secret: "c".repeat(64), threadContext: async () => ({ projectPath: base }),
+      dataDir, secret: "c".repeat(64), threadContext: async () => ({ projectPath: base }), appserver: { close() {} },
       pluginRoot: removed,
       spawn: (command, args, options) => { spawned.push({ command, args, options }); return { unref() {}, on() {} }; },
     });

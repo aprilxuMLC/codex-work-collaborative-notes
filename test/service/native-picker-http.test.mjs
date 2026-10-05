@@ -8,12 +8,12 @@ import {panelToken} from "../../plugins/collaborative-notes/server/lib/service-c
 const holder="thread-native-fixture";
 async function fixture({platform="win32",select,driveEnumerator}={}){
  const base=await fs.mkdtemp(path.join(os.tmpdir(),"cn-native-http-")),project=path.join(base,"project"),data=path.join(base,"data"),target=path.join(base,"target");
- await fs.mkdir(project);await fs.mkdir(target);await fs.mkdir(data);let created=0,selected=0;
+ await fs.mkdir(project);await fs.mkdir(target);await fs.mkdir(data);let created=0,selected=0,factoryPlatform=null;
  const provider={active:false,select:async options=>{selected++;provider.active=true;try{return await(select?.(options)||Promise.resolve({ok:true,status:"selected",path:target}));}finally{provider.active=false;}},close:async()=>{}};
- const service=new PanelService({dataDir:data,secret:"a".repeat(64),platform,driveEnumerator,nativePickerFactory:()=>{created++;return provider;},threadContext:async()=>({holder,projectPath:project,title:"Fixture"}),env:{...process.env,CODEX_HOME:base,CN_FORK_WATCH:"0"},idleMs:60000,preferredPort:0});
+ const service=new PanelService({dataDir:data,secret:"a".repeat(64),platform,driveEnumerator,nativePickerFactory:({platform:injectedPlatform})=>{created++;factoryPlatform=injectedPlatform;return provider;},threadContext:async()=>({holder,projectPath:project,title:"Fixture"}),appserver:{readThread:async id=>({id,cwd:project,name:"Fixture"}),close(){}},env:{...process.env,CODEX_HOME:base,CN_FORK_WATCH:"0"},idleMs:60000,preferredPort:0});
  const running=await service.start(),url="http://127.0.0.1:"+running.port+"/api/t/"+holder,headers={"x-cn-token":panelToken(service.secret,holder),"content-type":"application/json"};
  const post=(suffix,body={},options={})=>fetch(url+suffix,{method:"POST",headers,body:JSON.stringify(body),...options});
- return {base,project,data,target,service,post,url,headers,counts:()=>({created,selected}),close:async()=>{await service.close();await fs.rm(base,{recursive:true,force:true});}};
+ return {base,project,data,target,service,post,url,headers,counts:()=>({created,selected}),factoryPlatform:()=>factoryPlatform,close:async()=>{await service.close();await fs.rm(base,{recursive:true,force:true});}};
 }
 test("real HTTP selection returns only a candidate; explicit native confirmation uses old setup",async()=>{
  const f=await fixture();try{
@@ -38,11 +38,14 @@ test("Windows folder listing includes injected drive roots and breadcrumbs",{ski
   const result=await response.json();assert.equal(result.drivesError,"DRIVE_LIST_UNAVAILABLE");
  }finally{await unavailable.close();}
 });
-test("Mac does not advertise/load native support and old setup remains available",async()=>{
+test("Mac advertises the native picker but keeps setup/native unavailable",async()=>{
  const f=await fixture({platform:"darwin"});try{
- const context=await(await fetch(f.url+"/context",{headers:f.headers})).json();assert.equal(Object.hasOwn(context,"nativeFolderPicker"),false);
- assert.equal((await f.post("/fs/native-picker",{title:"Notes"})).status,404);assert.equal((await f.post("/setup/native",{customPath:f.target})).status,404);
- assert.deepEqual(f.counts(),{created:0,selected:0});
+ const context=await(await fetch(f.url+"/context",{headers:f.headers})).json();assert.equal(context.nativeFolderPicker,true);assert.equal(context.locationMove,false);
+ const native=await f.post("/fs/native-picker",{title:"Notes"});assert.equal(native.status,200);assert.equal((await native.json()).path,f.target);
+ assert.equal(f.factoryPlatform(),"darwin");
+ assert.equal((await f.post("/setup/native",{customPath:f.target})).status,404);
+ assert.equal((await f.post("/location/move",{action:"custom",customPath:f.target})).status,404);
+ assert.deepEqual(f.counts(),{created:1,selected:1});
  const old=await f.post("/setup",{action:"custom",customPath:f.target});assert.equal(old.status,200);assert.equal((await old.json()).root,await fs.realpath(f.target));
  }finally{await f.close();}
 });

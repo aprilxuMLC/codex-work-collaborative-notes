@@ -25,7 +25,7 @@ async function fixture() {
   const dataDir = path.join(base, "data");
   await fs.mkdir(projectPath);
   const context = async (id) => ({ holder: id, projectPath, title: "Service test thread" });
-  const service = new PanelService({ dataDir, secret: "a".repeat(64), threadContext: context, idleMs: 60_000 });
+  const service = new PanelService({ dataDir, secret: "a".repeat(64), threadContext: context, appserver: { readThread: async id => ({ id, cwd: projectPath }), close() {} }, idleMs: 60_000 });
   service.server = { address: () => ({ port: 4321 }) };
   const token = panelToken(service.secret, threadId);
   const request = (route, options = {}) => invoke(service, route, {
@@ -90,6 +90,7 @@ test("native picker initialization retries after a failed load", async () => {
   const service = new PanelService({
     dataDir: path.join(base, "data"),
     secret: "c".repeat(64),
+    appserver: { close() {} },
     platform: "win32",
     nativePickerFactory: async () => {
       attempts += 1;
@@ -114,6 +115,7 @@ test("service starts when a stale service lock PID has been reused by an unrelat
   const service = new PanelService({
     dataDir,
     secret: "b".repeat(64),
+    appserver: { close() {} },
     env: { ...process.env, CN_FORK_WATCH: "0" },
     idleMs: 60_000,
     lockOptions: { isHolderAlive: (pid) => pid !== process.pid },
@@ -138,7 +140,7 @@ test("service refuses a second instance without removing the first lock", async 
   const lockPath = path.join(dataDir, "service.lock");
   const first = await acquireLock(lockPath);
   const service = new PanelService({
-    dataDir, secret: "a".repeat(64), threadContext: async () => ({ projectPath: base }),
+    dataDir, secret: "a".repeat(64), threadContext: async () => ({ projectPath: base }), appserver: { close() {} },
     lockOptions: { waitMs: 10, retryMs: 1, isHolderAlive: () => true },
   });
   try {

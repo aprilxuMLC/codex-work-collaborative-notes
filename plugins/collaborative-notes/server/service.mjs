@@ -49,7 +49,7 @@ const PANEL_ASSETS = Object.freeze({
 });
 const MAX_REQUEST_BYTES = 1024 * 1024;
 const DEFAULT_IDLE_MS = 12 * 60 * 60 * 1000;
-const PLUGIN_VERSION = "0.8.13";
+const PLUGIN_VERSION = "0.8.14";
 const MAX_REFERENCE_CHARS = 8000;
 const REFERENCE_COPY_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -495,13 +495,15 @@ export class PanelService {
   }
 
   async getNativePicker() {
-    if (this.nativePlatform !== "win32") throw Object.assign(new Error("NOT_FOUND"), { code: "NOT_FOUND" });
+    if (!["darwin", "win32"].includes(this.nativePlatform)) throw Object.assign(new Error("NOT_FOUND"), { code: "NOT_FOUND" });
     if (this.nativeClosing) throw Object.assign(new Error("SERVICE_CLOSING"), { code: "SERVICE_CLOSING" });
     if (!this.nativePickerPromise) {
       const promise = (async () => {
         const instance = this.nativePickerFactory
-          ? await this.nativePickerFactory({ dataDir: this.dataDir, env: this.env })
-          : new (await import("./lib/windows-folder-picker.js")).NativeFolderPicker({ dataDir: this.dataDir, env: this.env });
+          ? await this.nativePickerFactory({ dataDir: this.dataDir, env: this.env, platform: this.nativePlatform })
+          : this.nativePlatform === "darwin"
+            ? new (await import("./lib/mac-folder-picker.js")).MacFolderPicker({ platform: this.nativePlatform })
+            : new (await import("./lib/windows-folder-picker.js")).NativeFolderPicker({ dataDir: this.dataDir, env: this.env, platform: this.nativePlatform });
         this.nativePickerInstance = instance;
         if (this.nativeClosing) { await instance.close(); throw Object.assign(new Error("SERVICE_CLOSING"), { code: "SERVICE_CLOSING" }); }
         return instance;
@@ -1196,7 +1198,8 @@ export class PanelService {
     const nativePickerPath = "/api/t/" + encodeURIComponent(apiThread) + "/fs/native-picker";
     const nativeSetupPath = "/api/t/" + encodeURIComponent(apiThread) + "/setup/native";
     if (url.pathname === nativePickerPath || url.pathname === nativeSetupPath) {
-      if (this.nativePlatform !== "win32") return sendError(res, "NOT_FOUND", 404);
+      if (url.pathname === nativeSetupPath ? this.nativePlatform !== "win32" : !["darwin", "win32"].includes(this.nativePlatform))
+        return sendError(res, "NOT_FOUND", 404);
       if (req.method !== "POST") return sendError(res, "METHOD_NOT_ALLOWED", 405);
       const abort = new AbortController();
       const disconnected = () => { if (!res.writableEnded) abort.abort(); };
@@ -1404,7 +1407,7 @@ export class PanelService {
 
     if (url.pathname === `/api/t/${encodeURIComponent(apiThread)}/context` && req.method === "GET") {
       const setupState = await import("./lib/binding.js").then(({ getSetupState }) => getSetupState(this.dataDir, context.projectPath));
-      const resolvedSetup = this.nativePlatform === "win32" && setupState.state === "INITIALIZED"
+      const resolvedSetup = setupState.state === "INITIALIZED"
         ? await resolveRoot(this.dataDir, context.projectPath)
         : null;
       const contextSetup = resolvedSetup?.ok === false && resolvedSetup.code === "CONFIGURED_ROOT_UNAVAILABLE"
@@ -1415,7 +1418,8 @@ export class PanelService {
       const carry = contextSetup.state === "INITIALIZED" ? await this.carryStatus(apiThread, context) : null;
       return sendJson(res, 200, {
         serviceVersion: PLUGIN_VERSION,
-        ...(this.nativePlatform === "win32" ? { nativeFolderPicker: true } : {}),
+        ...(["darwin", "win32"].includes(this.nativePlatform) ? { nativeFolderPicker: true } : {}),
+        locationMove: this.nativePlatform === "win32",
         title: context.title || null,
         projectPath: context.projectPath,
         locale,
@@ -1708,7 +1712,7 @@ export class PanelService {
   }
 
   async close() {
-    if (this.nativePlatform === "win32") {
+    if (["darwin", "win32"].includes(this.nativePlatform)) {
       this.nativeClosing = true;
       if (this.nativePickerPromise) {
         try { await (await this.nativePickerPromise).close(); } catch { /* no native process was started */ }

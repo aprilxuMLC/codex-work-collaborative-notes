@@ -3,3 +3,6 @@
 .env.*
 *.local
 .local/
+
+# Notes written by Collaborative Notes itself while developing here (private)
+/notes/

@@ -352,12 +352,15 @@ test("Darwin setup validates before taking the bindings lock and preserves main 
   assert.equal((await deleteNote({}, lane, "item", "0")).code, "INVALID_CONTEXT");
 });
 
-test("Darwin context response has the exact main shape, without locationChange", async () => {
+test("Darwin context advertises the dialog without Windows move state", async () => {
   const { project, dataDir } = await fixture("cn-darwin-context-");
   const { service, running, request } = await startService({ project, dataDir, platform: "darwin" });
   try {
     const result = await request("/context", undefined, "GET");
-    assert.equal(Object.hasOwn(await result.json(), "locationChange"), false);
+    const context = await result.json();
+    assert.equal(context.nativeFolderPicker, true);
+    assert.equal(context.locationMove, false);
+    assert.equal(Object.hasOwn(context, "locationChange"), false);
   } finally {
     await running.close();
     await service.close?.();

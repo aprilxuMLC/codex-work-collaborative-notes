@@ -28,12 +28,15 @@ button:disabled { cursor: default; opacity: .55; }
   align-items: center;
 }
 .app-header { justify-content: space-between; gap: 8px; border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, transparent); padding-bottom: 8px; }
-.title-block { min-width: 0; }
+.title-block { min-width: 0; flex: 1 1 auto; }
 h1, h2, h3, p { margin: 0; }
 h1 { font-size: 16px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 h2 { font-size: 14px; }
 h3 { font-size: 12px; }
 .project-name { margin-top: 2px; color: GrayText; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-row { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
+.project-row .project-name { flex: 1 1 auto; }
+.header-location { margin-top: 2px; padding: 1px 4px; color: GrayText; font-size: 11px; }
 .header-actions { display: flex; gap: 2px; flex: 0 0 auto; }
 .icon-button, .text-button, .sort-button, .lane-tab, .breadcrumb-button, .folder-button {
   border: 1px solid transparent;
@@ -82,6 +85,9 @@ textarea { resize: vertical; line-height: 1.4; }
 .setup-actions { flex-wrap: wrap; gap: 5px; margin-top: 8px; }
 .picker { margin-top: 10px; padding-top: 9px; border-top: 1px solid color-mix(in srgb, CanvasText 15%, transparent); }
 .picker-path { overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+.picker-path-form { display: flex; gap: 5px; margin: 7px 0 4px; }
+.picker-path-form input { min-width: 0; flex: 1; }
+.picker-path-form .text-button { flex: 0 0 auto; }
 .breadcrumbs { display: flex; flex-wrap: wrap; gap: 2px; margin: 5px 0; }
 .drive-list { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
 .drive-button { padding: 4px 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #2563eb; }

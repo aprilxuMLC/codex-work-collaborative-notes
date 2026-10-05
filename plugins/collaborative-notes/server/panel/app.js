@@ -5,12 +5,12 @@
   const LANE_KEYS = ["conversation_todo", "deferred_work", "knowledge_candidate", "lesson_candidate"];
   const nodes = Object.fromEntries([
     "thread-title", "project-name", "help-button", "search-button", "refresh-button",
-    "hooks-banner", "branch-banner", "carry-banner", "status-banner", "conflict-banner", "help-panel", "setup-gate", "notes-main", "mirror-panel", "source-view",
+    "hooks-banner", "branch-banner", "carry-banner", "location-banner", "status-banner", "conflict-banner", "help-panel", "setup-gate", "notes-main", "mirror-panel", "source-view",
     "confirm-banner", "selection-tray", "composer-lane-label", "composer-lane",
     "mirror-heading", "mirror-close", "mirror-hint", "mirror-filter-label", "mirror-filter", "mirror-list", "mirror-quote-selection",
     "lane-tabs", "search-panel", "search-label", "search-input", "search-close", "composer-heading",
     "new-note-button", "composer", "quoted-source", "quote-button", "save-note-button", "saved-heading", "newest-button", "oldest-button",
-    "notes-list", "footer",
+    "notes-list", "footer", "location-button",
   ].map((id) => [id, document.getElementById(id)]));
 
   const threadMatch = location.pathname.match(/^\/t\/([^/]+)/);
@@ -667,6 +667,11 @@
   function renderHeader() {
     nodes["thread-title"].textContent = context?.title || t("label.newThread");
     nodes["project-name"].textContent = context ? t("header.project", { name: projectName() }) : "";
+    const initialized = context?.setup?.state === "INITIALIZED";
+    nodes["location-button"].hidden = !initialized;
+    nodes["location-button"].textContent = t("header.location");
+    nodes["location-button"].title = t("header.location");
+    nodes["location-button"].setAttribute("aria-label", t("header.location"));
     nodes["help-button"].title = t("header.help");
     nodes["help-button"].setAttribute("aria-label", t("header.help"));
     nodes["search-button"].title = t("header.search");
@@ -690,6 +695,19 @@
       list.append(makeElement("li", "", t(key)));
     }
     banner.append(list);
+  }
+
+  function renderLocationBanner() {
+    const banner = nodes["location-banner"];
+    banner.replaceChildren();
+    const unavailable = context?.setup?.state === "INITIALIZED"
+      && context.setup.code === "CONFIGURED_ROOT_UNAVAILABLE";
+    banner.hidden = !unavailable;
+    if (!unavailable) return;
+    const row = makeElement("div", "banner-row");
+    row.append(makeElement("span", "", t("location.unavailable", { path: context.setup.root || "" })));
+    row.append(button(t("location.change"), "text-button", openRelocation));
+    banner.append(row);
   }
 
   function branchDismissed(childId) {
@@ -1206,7 +1224,7 @@
   function openRelocation() {
     if (relocating || context?.setup?.state !== "INITIALIZED" || setupBusy) return;
     relocating = true;
-    locationChangeMode = Boolean(context?.nativeFolderPicker && context?.setup?.code !== "CONFIGURED_ROOT_UNAVAILABLE");
+    locationChangeMode = Boolean(context?.locationMove && context?.setup?.code !== "CONFIGURED_ROOT_UNAVAILABLE");
     locationTarget = null;
     locationChangeBusy = false;
     locationPendingResult = null;
@@ -1433,7 +1451,7 @@
 
   function renderSetup() {
     const gate = nodes["setup-gate"];
-    if (context?.nativeFolderPicker) {
+    if (context?.locationMove) {
       const key = JSON.stringify([context.projectPath,context.setup?.state,context.setup?.root,context.setup?.code,context.setup?.legacy,context.setup?.proposedPath,context.locationChange?.active,locale,namingNeeded,nativeCandidate,nativeBusy,nativeFallback,pickerBusy,picker?.path,picker?.parent,picker?.loading,picker?.drives,picker?.drivesError,(picker?.entries || []).map((entry) => entry.path),setupBusy,setupUncertain,setupContinuation,relocating,relocationBusy,relocationNested,relocationAttempt,locationChangeMode,locationTarget,locationChangeBusy,locationPendingResult?.targetPath]);
       if (key === nativeRenderKey) return;
       nativeRenderKey = key;
@@ -1506,9 +1524,28 @@
 
   function renderPicker(gate) {
     const box = makeElement("div", "picker");
-    if (nativeFallback) box.append(makeElement("p", "picker-warning", t(locationChangeMode ? "location.fallbackHint" : relocating ? "relocate.nativeFallbackHint" : "setup.nativeFallbackHint")));
+    if (nativeFallback) box.append(makeElement("p", "picker-warning", t(locationChangeMode ? (context?.locationMove ? "location.fallbackHint" : "location.fallbackHint.mac") : relocating ? (context?.locationMove ? "relocate.nativeFallbackHint" : "relocate.nativeFallbackHint") : (context?.locationMove ? "setup.nativeFallbackHint" : "setup.nativeFallbackHint"))));
     box.append(makeElement("div", "picker-path", t("setup.current", { path: picker.path || "" })));
-    if (context?.nativeFolderPicker) {
+    const pathForm = makeElement("div", "picker-path-form");
+    const pathInput = document.createElement("input");
+    pathInput.type = "text";
+    pathInput.placeholder = t("setup.gotoPath");
+    pathInput.setAttribute("aria-label", t("setup.gotoPath"));
+    const goToPath = () => {
+      const value = String(pathInput.value || "").trim();
+      if (!value) {
+        showStatus("status.folderFailed", { error: errorText({ code: "LOCATION_INVALID" }) }, "error");
+        return;
+      }
+      return browseFolder(value);
+    };
+    const go = button(t("setup.go"), "text-button", goToPath);
+    pathInput.addEventListener("keydown", event => {
+      if (event.key === "Enter") goToPath();
+    });
+    pathForm.append(pathInput, go);
+    box.append(pathForm, makeElement("p", "hint", t(context?.locationMove ? "setup.pathHint.windows" : "setup.pathHint.mac")));
+    if (context?.locationMove) {
       const drives = makeElement("div", "drive-list");
       for (const drive of picker.drives || []) {
         const item = button(drive, "drive-button", () => browseFolder(drive));
@@ -1524,7 +1561,7 @@
     box.append(crumbs);
     const parent = typeof picker.parent === "string" ? picker.parent : "";
     const currentPath = String(picker.path || "");
-    const samePath = context?.nativeFolderPicker
+    const samePath = context?.locationMove
       ? parent.toLowerCase() === currentPath.toLowerCase()
       : parent === currentPath;
     if (parent && !samePath) {
@@ -1579,6 +1616,7 @@
     renderHooks();
     renderBranches();
     renderCarry();
+    renderLocationBanner();
     renderHelp();
     renderSetup();
     renderMain();
@@ -1827,7 +1865,7 @@
         context.title = latest.title;
         nodes["thread-title"].textContent = latest.title;
       }
-      if (context && latest?.setup && context.nativeFolderPicker) {
+      if (context && latest?.setup && context.locationMove) {
         const previousRoot = context.setup?.root;
         const wasLocationActive = Boolean(context.locationChange?.active);
         const isLocationActive = Boolean(latest.locationChange?.active);
@@ -1973,7 +2011,7 @@
           showStatus("location.selected", undefined, "success");
         } else {
           nativeCandidate = result.path;
-          showStatus("setup.nativeSelected", undefined, "success");
+          showStatus(relocating ? "location.selected" : "setup.nativeSelected", undefined, "success");
         }
         nativeFallback = false;
         pickerSequence += 1;
@@ -1987,7 +2025,7 @@
         const start = locationChangeMode ? context?.setup?.root : (nativeCandidate || picker?.path || context?.projectPath || context?.setup?.proposedPath);
         const opened = start ? await browseFolder(start) : false;
         if (sequence !== nativeSequence || abort.signal.aborted) return;
-        if (opened) showStatus(locationChangeMode ? "location.fallbackHint" : relocating ? "relocate.nativeFallback" : "setup.nativeFallback", { error: errorText(error) }, "warning");
+        if (opened) showStatus(locationChangeMode ? (context?.locationMove ? "location.fallbackHint" : "location.fallbackHint.mac") : relocating ? (context?.locationMove ? "relocate.nativeFallback" : "relocate.nativeFallback.mac") : (context?.locationMove ? "setup.nativeFallback" : "setup.nativeFallback.mac"), { error: errorText(error) }, "warning");
       } else showStatus("status.folderFailed", { error: errorText(error) }, "error");
     } finally {
       if (sequence === nativeSequence) { nativeBusy = false;nativeAbort = null;renderSetup(); }
@@ -2182,7 +2220,7 @@
           action,
           ...(customPath ? { customPath } : {}),
           ...(acceptEmpty ? { acceptEmpty: true } : {}),
-          ...(context?.nativeFolderPicker ? { expectedRoot: context.setup.root } : {}),
+          ...(context?.locationMove ? { expectedRoot: context.setup.root } : {}),
         },
       });
       if (result.ok !== true || typeof result.root !== "string") throw new ApiError("INVALID_RESPONSE");
@@ -2212,7 +2250,7 @@
   }
 
   async function completeSetup(action, customPath, options = {}) {
-    if (context?.nativeFolderPicker) return completeWindowsSetup(action, customPath, options);
+    if (context?.locationMove) return completeWindowsSetup(action, customPath, options);
     if (setupBusy) return;
     const labels = Object.fromEntries(LANE_KEYS.map((key) => [key, String(setupLabels[key] || "").trim()]));
     if (namingNeeded && Object.values(labels).some((value) => !value)) {
@@ -2245,6 +2283,7 @@
   }
 
   nodes["help-button"].addEventListener("click", () => { helpOpen = !helpOpen; renderHelp(); });
+  nodes["location-button"].addEventListener("click", openRelocation);
   nodes["search-button"].addEventListener("click", () => {
     searchOpen = !searchOpen;
     if (!searchOpen) { searchQuery = ""; searchResults = null; }

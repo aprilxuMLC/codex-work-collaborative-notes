@@ -43,6 +43,7 @@ test("panel assets are served with token and correct content types", async () =>
     dataDir: "/tmp/collaborative-notes-panel-test",
     secret: "a".repeat(64),
     threadContext: async (id) => ({ holder: id, projectPath: "/tmp", title: "Panel test" }),
+    appserver: { close() {} },
   });
   service.server = { address: () => ({ port: 4321 }) };
   const token = panelToken(service.secret, threadId);

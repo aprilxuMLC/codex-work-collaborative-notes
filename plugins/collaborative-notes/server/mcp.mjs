@@ -234,7 +234,7 @@ export function createMcpServer({
       return { jsonrpc: "2.0", id, result: {
         protocolVersion: message.params?.protocolVersion,
         capabilities: { tools: {} },
-        serverInfo: { name: "collaborative-notes", version: "0.8.13" },
+        serverInfo: { name: "collaborative-notes", version: "0.8.14" },
       } };
     }
     if (method === "initialized" || method === "notifications/initialized" || method === "ping") {

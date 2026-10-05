@@ -27,7 +27,10 @@
     <header class="app-header">
       <div class="title-block">
         <h1 id="thread-title">Notes</h1>
-        <div id="project-name" class="project-name"></div>
+        <div class="project-row">
+          <div id="project-name" class="project-name"></div>
+          <button id="location-button" class="text-button header-location" type="button" hidden></button>
+        </div>
       </div>
       <div class="header-actions">
         <button id="help-button" class="icon-button" type="button" aria-label="Help">?</button>
@@ -39,6 +42,7 @@
     <div id="hooks-banner" class="banner warning" hidden></div>
     <div id="branch-banner" class="banner info" hidden></div>
     <div id="carry-banner" class="banner warning" hidden></div>
+    <div id="location-banner" class="banner warning" hidden></div>
     <div id="status-banner" class="banner" hidden></div>
     <div id="conflict-banner" class="banner conflict" hidden></div>
     <div id="confirm-banner" class="banner warning" hidden></div>

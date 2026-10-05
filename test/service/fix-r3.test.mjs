@@ -322,7 +322,7 @@ test("copies of attached note text are not kept beyond a day", async () => {
       lastBinding: { ok: true, turnId: "turn-old", text: "old note text", at: old },
       consumed: { "turn-old": { text: "old note text", at: old }, "turn-new": { text: "new note text", at: fresh } },
     }));
-    const service = new PanelService({ dataDir, secret: "c".repeat(64), threadContext: async () => ({ projectPath: base }) });
+    const service = new PanelService({ dataDir, secret: "c".repeat(64), threadContext: async () => ({ projectPath: base }), appserver: { close() {} } });
     const selection = await service.loadSelection(threadId);
     assert.deepEqual(Object.keys(selection.consumed), ["turn-new"]);
     assert.equal(selection.lastBinding.text, undefined);

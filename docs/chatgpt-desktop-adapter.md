@@ -2,7 +2,7 @@
 
 **English** | [中文](chatgpt-desktop-adapter.zh-CN.md)
 
-> **Version:** 0.8.13 · validated on macOS (ChatGPT 26.908.70816, 26.928.31416) and
+> **Version:** 0.8.14 · validated on macOS (ChatGPT 26.908.70816, 26.928.31416) and
 > Windows (ChatGPT 26.930.2377.0; the native folder dialog was validated on the
 > contributor's Windows machine).
 >
@@ -54,9 +54,15 @@ The bundled `codex` is used for app-server access.
 - **Project:** the thread's `cwd`. A one-time setup per project binds a notes
   root, by default `<project>/notes` (Decision 64). A missing configured root
   is reported, never recreated.
-- **Changing the location after setup** ("Change location" beside the bound
-  path; also offered when the bound root is unavailable). **This differs by
-  host platform:**
+- **Choosing a folder** (first-use setup and Change location): the system
+  folder dialog proposes a candidate that the user confirms in the panel —
+  on macOS the Finder dialog (`/usr/bin/osascript`, `choose folder`), on
+  Windows the standard folder dialog. If the dialog cannot open, is busy,
+  times out or fails, the in-panel picker is used instead; it also accepts a
+  pasted path.
+- **Changing the location after setup** ("📁 Notes location" in the panel
+  header and "Change location" beside the bound path; a banner offers it when
+  the bound root is unavailable). **This differs by host platform:**
   - **macOS:** the project is re-pointed to another folder; notes are not
     copied or moved. The folder may already hold notes (for example a notes
     folder the user moved there); a folder one level too high is detected.
@@ -248,6 +254,8 @@ The plugin reads only these:
   assets, its manifest);
 - during setup, when you browse for a notes location: the folder listing
   of the folders you open, and a new folder you ask it to create;
+- on macOS, the folder the user picks in the Finder dialog (`osascript` only
+  returns that path);
 - on Windows native setup, Windows Shell locations the user navigates in the
   standard dialog; selected-directory metadata and its resolved volume type;
   the helper's launching process identity and handle, only for lifecycle cleanup;

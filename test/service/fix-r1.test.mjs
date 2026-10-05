@@ -137,7 +137,7 @@ test("F12 overwrite edit uses the overwrite path", async () => {
 test("F15 lane configuration requires panel authentication", async () => {
   const fixture = await tempFixture();
   try {
-    const service = new PanelService({ dataDir: fixture.dataDir, secret: "c".repeat(64), threadContext: async () => ({ projectPath: fixture.project }) });
+    const service = new PanelService({ dataDir: fixture.dataDir, secret: "c".repeat(64), threadContext: async () => ({ projectPath: fixture.project }), appserver: { close() {} } });
     service.server = { address: () => ({ port: 4321 }) };
     const request = { method: "GET", url: "/api/lane-config", headers: {} };
     const result = { status: 0 };

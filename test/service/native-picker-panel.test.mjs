@@ -12,6 +12,7 @@ class Element {
   setAttribute(){} focus(){} querySelector(){return null;}
 }
 async function panel({native=true,reply,instance=null}={}) {
+ const nativeAvailable=native!==false,locationMove=native===true;
   const elements=new Map(),events={},calls=[];let nonce=0;
   const document={documentElement:{dataset:instance?{cnPanel:instance}:{}},getElementById(id){if(!elements.has(id))elements.set(id,new Element());return elements.get(id);},createElement:tag=>new Element(tag),addEventListener(){}};
   const sandbox={crypto:{randomUUID:()=> (++nonce).toString(16).padStart(32,'0')},document,location:{pathname:"/t/thread-panel-fixture",reload(){}},AbortController,console,setTimeout,clearTimeout,setInterval:()=>1,clearInterval(){},addEventListener:(name,fn)=>events[name]=fn};
@@ -28,20 +29,20 @@ async function panel({native=true,reply,instance=null}={}) {
   vm.runInContext(await fs.readFile(new URL("../../plugins/collaborative-notes/server/panel/i18n.js",import.meta.url),"utf8"),sandbox);
   let source=await fs.readFile(new URL("../../plugins/collaborative-notes/server/panel/app.js",import.meta.url),"utf8");
   source=source.replace("loadContext().then(startPolling);",`
-    renderAll = () => { renderSetup(); renderMain(); };
-    loadContext = async () => { const next=await api("/context");context=next;renderAll(); };
+    renderAll = () => { renderHeader(); renderLocationBanner(); renderSetup(); renderMain(); };
+    loadContext = async () => { const next=await api("/context");context={...next,...(next.nativeFolderPicker&&!Object.hasOwn(next,"locationMove")?{locationMove:true}:{})};renderAll(); };
     loadLane = async () => null;
     global.testPanel={openPicker,completeSetup,renderSetup,renderFooter,beginLocationChange,confirmLocationChange,cancelLocationSelection,saveComposer,refreshTitle,
       get state(){return {context,nativeCandidate,nativeBusy,setupBusy,composerDraft,status,locationTarget,locationChangeMode,locationChangeBusy,locationPendingResult,conflict,setupUncertain:typeof setupUncertain==='undefined'?false:setupUncertain};},
-      fixture(value){context=value;locale='zh';namingNeeded=true;setupLabels=Object.fromEntries(LANE_KEYS.map(key=>[key,key]));composerDraft='隔离测试草稿';composerTouched=true;renderAll();}
+      fixture(value){context={...value,...(value.nativeFolderPicker&&!Object.hasOwn(value,"locationMove")?{locationMove:true}:{})};locale='zh';namingNeeded=true;setupLabels=Object.fromEntries(LANE_KEYS.map(key=>[key,key]));composerDraft='隔离测试草稿';composerTouched=true;renderAll();}
     };
   `);
   vm.runInContext(source,sandbox);
-  sandbox.testPanel.fixture({nativeFolderPicker:native||undefined,projectPath:"C:\\project",setup:{state:"UNINITIALIZED",legacy:false}});
+  sandbox.testPanel.fixture({nativeFolderPicker:nativeAvailable||undefined,locationMove:locationMove||undefined,projectPath:"C:\\project",setup:{state:"UNINITIALIZED",legacy:false}});
   return {app:sandbox.testPanel,calls,elements,events,beacons};
 }
 const configured=root=>({status:200,data:{ok:true,root,state:"INITIALIZED"}});
-const context=root=>({status:200,data:{nativeFolderPicker:true,projectPath:"C:\\project",setup:{state:"INITIALIZED",root}}});
+const context=root=>({status:200,data:{nativeFolderPicker:true,locationMove:true,projectPath:"C:\\project",setup:{state:"INITIALIZED",root}}});
 const findText=(node,text)=>{if(node?.textContent===text)return node;for(const child of node?.children||[]){const found=findText(child,text);if(found)return found;}return undefined;};
 
 test("panel selection changes only candidate; polling retains controls; cancellation preserves draft",async()=>{
@@ -280,4 +281,68 @@ test('an active Windows move blocks local saves and does not open another picker
  assert.equal(await p.app.saveComposer(),false);
  assert.equal(p.calls.length,0);
  assert.equal(p.app.state.status.key,'location.running');
+});
+
+test('macOS native relocation confirms through the light location endpoint', async () => {
+ const calls=[];
+ const p=await panel({native:'darwin',reply:call=>{
+  calls.push(call);
+  if(call.url.endsWith('/fs/native-picker'))return {status:200,data:{status:'selected',path:'/tmp/new-notes'}};
+  if(call.url.endsWith('/location'))return {status:200,data:{ok:true,root:'/tmp/new-notes',state:'INITIALIZED',changed:true}};
+  if(call.url.endsWith('/context'))return {status:200,data:{nativeFolderPicker:true,locationMove:false,projectPath:'/tmp/project',setup:{state:'INITIALIZED',root:'/tmp/new-notes'}}};
+  return {status:200,data:{}};
+ }});
+ p.app.fixture({nativeFolderPicker:true,locationMove:false,projectPath:'/tmp/project',setup:{state:'INITIALIZED',root:'/tmp/old'}});
+ findText(p.elements.get('footer'),'更改位置').listeners.click();
+ await findText(p.elements.get('setup-gate'),'选择其它位置').listeners.click();
+ const confirm=findText(p.elements.get('setup-gate'),'确认使用此位置');assert.ok(confirm);await confirm.listeners.click();
+ assert.equal(calls.some(call=>call.url.endsWith('/location/move')),false);
+ assert.equal(calls.filter(call=>call.url.endsWith('/location')).length,1);
+});
+
+test('macOS first-use native candidate confirms through the original setup endpoint', async () => {
+ const calls=[];
+ const p=await panel({native:'darwin',reply:call=>{
+  calls.push(call);
+  if(call.url.endsWith('/fs/native-picker'))return {status:200,data:{status:'selected',path:'/tmp/candidate'}};
+  if(call.url.endsWith('/setup'))return {status:200,data:{ok:true,root:'/tmp/candidate',state:'INITIALIZED'}};
+  if(call.url.endsWith('/context'))return {status:200,data:{nativeFolderPicker:true,locationMove:false,projectPath:'/tmp/project',setup:{state:'INITIALIZED',root:'/tmp/candidate'}}};
+  return {status:200,data:{}};
+ }});
+ await p.app.openPicker();
+ await findText(p.elements.get('setup-gate'),'确认使用此位置').listeners.click();
+ assert.equal(calls.some(call=>call.url.endsWith('/setup/native')),false);
+ assert.equal(calls.filter(call=>call.url.endsWith('/setup')).length,1);
+});
+
+test('macOS native picker failures all open the in-panel fallback', async () => {
+ for (const code of ['PICKER_UNAVAILABLE','PICKER_TIMEOUT','PICKER_FAILED','PICKER_BUSY','LOCATION_INVALID']) {
+  const p=await panel({native:'darwin',reply:call=>call.url.endsWith('/fs/native-picker')
+    ? {status:code==='PICKER_TIMEOUT'?504:code==='PICKER_BUSY'?409:code==='PICKER_FAILED'?502:400,data:{code}}
+    : call.url.includes('/fs?')
+      ? {status:200,data:{path:'/tmp/project',parent:'/tmp',entries:[],breadcrumbs:[{name:'/tmp',path:'/tmp'}]}}
+      : undefined});
+  await p.app.openPicker();
+  assert.equal(p.app.state.status.key,'setup.nativeFallback.mac',code);
+  assert.ok(p.calls.some(call=>call.url.includes('/fs?path=')),code);
+ }
+});
+
+test('header location button, unavailable-root banner, and Go to path are available on macOS', async () => {
+ const p=await panel({native:'darwin',reply:call=>call.url.endsWith('/fs/native-picker')
+   ? {status:400,data:{code:'PICKER_FAILED'}}
+   : call.url.includes('/fs?')
+   ? {status:200,data:{path:'/tmp/project',parent:'/tmp',entries:[],breadcrumbs:[{name:'/tmp',path:'/tmp'}]}}
+   : undefined});
+ p.app.fixture({nativeFolderPicker:true,locationMove:false,projectPath:'/tmp/project',setup:{state:'INITIALIZED',root:'/tmp/missing',code:'CONFIGURED_ROOT_UNAVAILABLE'}});
+ assert.ok(findText(p.elements.get('location-banner'),'找不到便签位置：/tmp/missing'));
+ assert.ok(findText(p.elements.get('location-button'),'📁 便签位置'));
+ findText(p.elements.get('location-button'),'📁 便签位置').listeners.click();
+ await p.app.openPicker();
+ const gate=p.elements.get('setup-gate');
+ const inputs=[];const visit=node=>{if(node?.tag==='input')inputs.push(node);for(const child of node?.children||[])visit(child);};visit(gate);
+ assert.equal(inputs.length,1);inputs[0].value='/tmp/pasted-path';
+ findText(gate,'前往').listeners.click();
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.ok(p.calls.some(call=>call.url.includes(encodeURIComponent('/tmp/pasted-path'))));
 });

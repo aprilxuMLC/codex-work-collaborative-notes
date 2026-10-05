@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.14
+
+- **macOS:** "Choose another location" (first-use setup and Change location)
+  opens the Finder folder dialog; you confirm the choice in the panel. If the
+  dialog cannot open, the in-panel picker is used instead.
+- **Change location is easier to find:** a "📁 Notes location" button in the
+  panel header, and a banner when the notes location can no longer be found.
+- The in-panel picker accepts a pasted path ("Go to path").
+
 ## 0.8.13 — Change location
 
 - **Change location** after setup, beside the path at the bottom of the
